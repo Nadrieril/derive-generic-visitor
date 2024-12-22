@@ -1,0 +1,17 @@
+[package]
+name = "derive_generic_visitor"
+version = "0.1.0"
+edition = "2021"
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+derive-visitor = { version = "0.4.0", optional = true }
+derive_generic_visitor_macros = { version = "0.1.0", path = "../derive_generic_visitor_macros" }
+
+[features]
+default = []
+# Enables compatibility layer with the `derive-visitor` crate.
+dynamic = ["dep:derive-visitor"]
+# Enables some extra features.
+nightly = []

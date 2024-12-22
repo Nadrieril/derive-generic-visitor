@@ -1,0 +1,11 @@
+[workspace.package]
+authors = ["Nadrieril <nadrieril@users.noreply.github.com>"]
+license = "MIT OR Apache-2.0"
+
+[workspace]
+resolver = "2"
+members = [
+    "derive_generic_visitor",
+    "derive_generic_visitor_macros",
+]
+

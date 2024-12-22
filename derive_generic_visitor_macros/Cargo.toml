@@ -1,0 +1,16 @@
+[package]
+name = "derive_generic_visitor_macros"
+version = "0.1.0"
+edition = "2021"
+authors.workspace = true
+license.workspace = true
+
+[lib]
+proc-macro = true
+
+[dependencies]
+darling = "0.20"
+itertools = "0.13"
+proc-macro2 = "1.0"
+quote = "1.0"
+syn = { version = "2.0.0", features = ["full"] }
