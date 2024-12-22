@@ -9,6 +9,7 @@ license.workspace = true
 proc-macro = true
 
 [dependencies]
+convert_case = "0.6.0"
 darling = "0.20"
 itertools = "0.13"
 proc-macro2 = "1.0"

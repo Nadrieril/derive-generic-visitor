@@ -4,6 +4,7 @@ use syn::*;
 use token::Mut;
 
 mod drive;
+mod visit;
 
 fn expand_with(
     input: proc_macro::TokenStream,
@@ -50,6 +51,16 @@ impl Names {
             mut_modifier: mutable.then(Default::default),
         }
     }
+}
+
+#[proc_macro_derive(Visit, attributes(visit))]
+pub fn derive_visit(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    expand_with(input, |input| visit::impl_visit(input, false))
+}
+
+#[proc_macro_derive(VisitMut, attributes(visit))]
+pub fn derive_visit_mut(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    expand_with(input, |input| visit::impl_visit(input, true))
 }
 
 #[proc_macro_derive(Drive, attributes(drive))]
