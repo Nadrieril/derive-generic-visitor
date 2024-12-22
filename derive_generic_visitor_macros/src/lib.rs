@@ -1,4 +1,4 @@
-//! Derive macros for the `Drive`/`DriveMut` traits in `derive_generic_visitor`.
+//! Derive macros for `derive_generic_visitor`.
 use proc_macro2::TokenStream;
 use syn::*;
 use token::Mut;
