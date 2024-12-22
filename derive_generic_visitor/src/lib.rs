@@ -44,7 +44,6 @@
 //! field of `x`; it is up to the visitor to recurse into nested structures if it wishes. There is
 //! in general more work needed to get a useful visitor from this. What this provides is the
 //! boilerplate-y core, on top of which visitors can be built.
-#![cfg_attr(feature = "nightly", feature(associated_type_defaults))]
 pub use derive_generic_visitor_macros::{Drive, DriveMut, Visit, VisitMut, Visitor};
 pub use std::convert::Infallible;
 pub use std::ops::ControlFlow;
@@ -63,10 +62,7 @@ pub mod dynamic;
 pub trait Visitor {
     /// The type used for early-return, if the visitor supports it. Use an empty type like
     /// `std::convert::Infallible` if the visitor does not short-circuit.
-    #[cfg(not(feature = "nightly"))]
     type Break;
-    #[cfg(feature = "nightly")]
-    type Break = Infallible;
 }
 
 /// A visitor that can visit a type `T`.

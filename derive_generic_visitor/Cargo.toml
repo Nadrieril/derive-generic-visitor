@@ -13,5 +13,3 @@ derive_generic_visitor_macros = { version = "0.1.0", path = "../derive_generic_v
 default = []
 # Enables compatibility layer with the `derive-visitor` crate.
 dynamic = ["dep:derive-visitor"]
-# Enables some extra features.
-nightly = []
