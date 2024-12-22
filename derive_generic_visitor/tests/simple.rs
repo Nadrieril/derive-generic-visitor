@@ -23,7 +23,7 @@ fn test_derive() {
         })),
     };
 
-    #[derive(Visit)]
+    #[derive(Visitor, Visit)]
     #[visit(u64)]
     #[visit(enter(u32))]
     #[visit(drive(Foo), drive(for<T> Option<T>, for<T> Box<T>))]
@@ -71,7 +71,7 @@ fn test_generic_list() {
         }
     }
 
-    #[derive(Default, Visit)]
+    #[derive(Default, Visitor, Visit)]
     /// We drive blindly through `Node`, so we need to handle the `T` case. This prevents us from
     /// having a generic `Box` visitor, as that would clash if `T = Box<_>`.
     #[visit(elem: T)]
@@ -90,7 +90,7 @@ fn test_generic_list() {
     let contents = CollectVisitor::default().visit_by_val_infallible(&list).vec;
     assert_eq!(contents, vec![1, 42]);
 
-    #[derive(Default, Visit)]
+    #[derive(Default, Visitor, Visit)]
     #[visit(Node<T>)]
     #[visit(drive(List<T>, for<U> Box<U>))]
     struct CollectVisitor2<T: Clone> {
@@ -102,7 +102,7 @@ fn test_generic_list() {
             // Instead of using `drive_inner` (which requires `Visit<T>` which clashes with the
             // generic `Box<U>` visit), we visit everything but the `T` case with a new visitor.
             // This is overengineered here but demonstrates the flexibility of our interface.
-            #[derive(Visit)]
+            #[derive(Visitor, Visit)]
             #[visit(skip(T))]
             #[visit(drive(Box<List<T>>))]
             #[visit(override(List<T>))]

@@ -197,7 +197,6 @@ pub fn impl_visit(input: DeriveInput, mutable: bool) -> Result<TokenStream> {
     use VisitKind::*;
     let names = Names::new(mutable);
     let Names {
-        visitor_trait,
         visit_trait,
         drive_trait,
         drive_method,
@@ -212,17 +211,7 @@ pub fn impl_visit(input: DeriveInput, mutable: bool) -> Result<TokenStream> {
     let (_, ty_generics, _) = input.generics.split_for_impl();
     let impl_subject = quote! { #name #ty_generics };
 
-    // Implement the `Visitor` trait for our type, which provides the `Break` assoc ty.
-    let visitor_impl = {
-        let (impl_generics, _, where_clause) = input.generics.split_for_impl();
-        quote! {
-            impl #impl_generics #visitor_trait for #impl_subject #where_clause {
-                type Break = Infallible;
-            }
-        }
-    };
-
-    let visit_impls: Vec<TokenStream> = visit_options
+    let visit_impls: TokenStream = visit_options
         .iter()
         .map(|visit| {
             let generics = {
@@ -286,9 +275,22 @@ pub fn impl_visit(input: DeriveInput, mutable: bool) -> Result<TokenStream> {
             }
         })
         .collect();
+    Ok(visit_impls)
+}
 
-    Ok(quote!(
-        #visitor_impl
-        #(#visit_impls)*
-    ))
+/// Implement the `Visitor` trait for our type, which provides the `Break` assoc ty.
+pub fn impl_visitor(input: DeriveInput) -> Result<TokenStream> {
+    let names = Names::new(false);
+    let Names { visitor_trait, .. } = &names;
+
+    let name = input.ident;
+    let (_, ty_generics, _) = input.generics.split_for_impl();
+    let impl_subject = quote! { #name #ty_generics };
+
+    let (impl_generics, _, where_clause) = input.generics.split_for_impl();
+    Ok(quote! {
+        impl #impl_generics #visitor_trait for #impl_subject #where_clause {
+            type Break = ::std::convert::Infallible;
+        }
+    })
 }

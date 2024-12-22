@@ -53,6 +53,11 @@ impl Names {
     }
 }
 
+#[proc_macro_derive(Visitor, attributes(visit))]
+pub fn derive_visitor(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    expand_with(input, |input| visit::impl_visitor(input))
+}
+
 #[proc_macro_derive(Visit, attributes(visit))]
 pub fn derive_visit(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     expand_with(input, |input| visit::impl_visit(input, false))

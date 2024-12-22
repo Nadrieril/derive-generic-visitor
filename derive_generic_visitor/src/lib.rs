@@ -45,7 +45,7 @@
 //! in general more work needed to get a useful visitor from this. What this provides is the
 //! boilerplate-y core, on top of which visitors can be built.
 #![cfg_attr(feature = "nightly", feature(associated_type_defaults))]
-pub use derive_generic_visitor_macros::{Drive, DriveMut, Visit, VisitMut};
+pub use derive_generic_visitor_macros::{Drive, DriveMut, Visit, VisitMut, Visitor};
 pub use std::convert::Infallible;
 pub use std::ops::ControlFlow;
 pub use ControlFlow::{Break, Continue};
@@ -55,6 +55,11 @@ mod basic_impls;
 pub mod dynamic;
 
 /// A visitor.
+///
+/// This trait provides the `Break` type used by its two child traits `Visit` and `VisitMut`. All
+/// visitors can abort visitation early by returning `ControlFlow::Break`. For the common case of
+/// visitors that never return early, use `std::convert::Infallible`. This is the default type used
+/// by `derive(Visitor)`.
 pub trait Visitor {
     /// The type used for early-return, if the visitor supports it. Use an empty type like
     /// `std::convert::Infallible` if the visitor does not short-circuit.
