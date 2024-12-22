@@ -37,10 +37,11 @@ pub fn impl_drive(input: DeriveInput, mutable: bool) -> Result<TokenStream> {
         visitor_trait,
         visit_trait,
         drive_trait,
-        drive_method,
+        drive_inner_method,
         visitor_param,
         lifetime_param,
         mut_modifier,
+        control_flow,
         ..
     } = &names;
 
@@ -96,13 +97,13 @@ pub fn impl_drive(input: DeriveInput, mutable: bool) -> Result<TokenStream> {
         impl #impl_generics #drive_trait<#lifetime_param, #visitor_param> for #impl_subject
         #where_clause {
             #[allow(non_shorthand_field_patterns, unused_variables)]
-            fn #drive_method(&#lifetime_param #mut_modifier self, visitor: &mut #visitor_param)
-                    -> ::std::ops::ControlFlow<#visitor_param::Break> {
+            fn #drive_inner_method(&#lifetime_param #mut_modifier self, visitor: &mut #visitor_param)
+                    -> #control_flow<#visitor_param::Break> {
                 match self {
                     #arms
                     _ => {}
                 }
-                ::std::ops::ControlFlow::Continue(())
+                #control_flow::Continue(())
             }
         }
     })

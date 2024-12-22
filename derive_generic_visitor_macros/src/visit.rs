@@ -25,81 +25,19 @@ struct Visit {
 }
 
 mod parse {
-    use convert_case::{Boundary, Case, Casing};
     use syn::parse::{Parse, ParseStream};
     use syn::punctuated::Punctuated;
     use syn::token::{self};
-    use syn::{parenthesized, Attribute, Generics, Ident, Result, Token, Type};
+    use syn::{parenthesized, Attribute, Result, Token};
 
     use super::{Visit, VisitKind};
-
-    struct VisitableType {
-        generics: Generics,
-        ty: Type,
-    }
-
-    impl Parse for VisitableType {
-        fn parse(input: ParseStream) -> Result<Self> {
-            let generics = if input.peek(Token![for]) {
-                let _: Token![for] = input.parse()?;
-                let generics = input.parse()?;
-                generics
-            } else {
-                Generics::default()
-            };
-            Ok(VisitableType {
-                generics,
-                ty: input.parse()?,
-            })
-        }
-    }
+    use crate::common::NamedGenericTy;
 
     mod kw {
         syn::custom_keyword!(skip);
         syn::custom_keyword!(drive);
         syn::custom_keyword!(enter);
         syn::custom_keyword!(exit);
-    }
-
-    struct NamedTy {
-        name: Option<(Ident, Token![:])>,
-        ty: VisitableType,
-    }
-
-    impl Parse for NamedTy {
-        fn parse(input: ParseStream) -> Result<Self> {
-            let name = if input.peek2(Token![:]) {
-                Some((input.parse()?, input.parse()?))
-            } else {
-                None
-            };
-            Ok(NamedTy {
-                name,
-                ty: input.parse()?,
-            })
-        }
-    }
-
-    impl NamedTy {
-        fn get_name(&self) -> Result<Ident> {
-            Ok(match &self.name {
-                Some((name, _)) => name.clone(),
-                None => match &self.ty.ty {
-                    Type::Path(path) if path.qself.is_none() && path.path.segments.len() == 1 => {
-                        let ident = &path.path.segments[0].ident;
-                        let name = ident.to_string();
-                        Ident::new(
-                            &name
-                                .from_case(Case::Pascal)
-                                .without_boundaries(&[Boundary::UpperDigit, Boundary::LowerDigit])
-                                .to_case(Case::Snake),
-                            ident.span(),
-                        )
-                    }
-                    _ => todo!(),
-                },
-            })
-        }
     }
 
     #[allow(unused)]
@@ -115,7 +53,7 @@ mod parse {
     struct VisitOption {
         /// Optional because `visit(Ty)` is allowed and means the same as `visit(override(Ty))`.
         kind_token: Option<(VisitKindToken, token::Paren)>,
-        tys: Punctuated<NamedTy, Token![,]>,
+        tys: Punctuated<NamedGenericTy, Token![,]>,
     }
 
     impl Parse for VisitOption {
@@ -199,9 +137,10 @@ pub fn impl_visit(input: DeriveInput, mutable: bool) -> Result<TokenStream> {
     let Names {
         visit_trait,
         drive_trait,
-        drive_method,
+        drive_inner_method,
         lifetime_param,
         mut_modifier,
+        control_flow,
         ..
     } = &names;
 
@@ -241,7 +180,7 @@ pub fn impl_visit(input: DeriveInput, mutable: bool) -> Result<TokenStream> {
 
             let ty = &visit.ty;
             let drive_inner = quote!(
-                <#ty as #drive_trait<'_, Self>>::#drive_method(x, self)?;
+                <#ty as #drive_trait<'_, Self>>::#drive_inner_method(x, self)?;
             );
             let body = match &visit.kind {
                 Skip => quote!(),
@@ -267,9 +206,9 @@ pub fn impl_visit(input: DeriveInput, mutable: bool) -> Result<TokenStream> {
                     #where_clause
                 {
                     fn visit(&mut self, x: &#lifetime_param #mut_modifier #ty)
-                        -> ::std::ops::ControlFlow<Self::Break> {
+                        -> #control_flow<Self::Break> {
                         #body
-                        ::std::ops::ControlFlow::Continue(())
+                        #control_flow::Continue(())
                     }
                 }
             }
