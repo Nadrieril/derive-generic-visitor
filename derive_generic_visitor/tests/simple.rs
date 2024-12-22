@@ -48,29 +48,29 @@ fn test_derive() {
     assert_eq!(sum, 1011);
 }
 
+#[derive(Drive, DriveMut)]
+enum List<T> {
+    Nil,
+    Cons(Node<T>),
+}
+
+#[derive(Drive, DriveMut)]
+struct Node<T> {
+    val: T,
+    next: Box<List<T>>,
+}
+
+impl<T> List<T> {
+    fn cons(self, val: T) -> Self {
+        Self::Cons(Node {
+            val,
+            next: Box::new(self),
+        })
+    }
+}
+
 #[test]
 fn test_generic_list() {
-    #[derive(Drive, DriveMut)]
-    enum List<T> {
-        Nil,
-        Cons(Node<T>),
-    }
-
-    #[derive(Drive, DriveMut)]
-    struct Node<T> {
-        val: T,
-        next: Box<List<T>>,
-    }
-
-    impl<T> List<T> {
-        fn cons(self, val: T) -> Self {
-            Self::Cons(Node {
-                val,
-                next: Box::new(self),
-            })
-        }
-    }
-
     #[derive(Default, Visitor, Visit)]
     /// We drive blindly through `Node`, so we need to handle the `T` case. This prevents us from
     /// having a generic `Box` visitor, as that would clash if `T = Box<_>`.
@@ -89,24 +89,30 @@ fn test_generic_list() {
     let list: List<u64> = List::Nil.cons(42).cons(1);
     let contents = CollectVisitor::default().visit_by_val_infallible(&list).vec;
     assert_eq!(contents, vec![1, 42]);
+}
 
+#[test]
+fn test_generic_list2() {
     #[derive(Default, Visitor, Visit)]
+    // We don't drive blindly through `Node`: we have a custom visit function, so we don't need
+    // `CollectVisitor<T>: Visit<T>`.
     #[visit(Node<T>)]
     #[visit(drive(List<T>, for<U> Box<U>))]
-    struct CollectVisitor2<T: Clone> {
+    struct CollectVisitor<T: Clone> {
         vec: Vec<T>,
     }
-    impl<T: Clone> CollectVisitor2<T> {
+    impl<T: Clone> CollectVisitor<T> {
         fn visit_node(&mut self, x: &Node<T>) -> ControlFlow<Infallible> {
             self.vec.push(x.val.clone());
-            // Instead of using `drive_inner` (which requires `Visit<T>` which clashes with the
-            // generic `Box<U>` visit), we visit everything but the `T` case with a new visitor.
-            // This is overengineered here but demonstrates the flexibility of our interface.
+            // Instead of using `drive_inner` (which requires `CollectVisitor<T>: Visit<T>` which
+            // clashes with the generic `Box<U>` visit), we visit everything but the `T` case with
+            // a new visitor. This is overengineered here but demonstrates the flexibility of our
+            // interface.
             #[derive(Visitor, Visit)]
             #[visit(skip(T))]
             #[visit(drive(Box<List<T>>))]
             #[visit(override(List<T>))]
-            struct InnerVisitor<'a, T: Clone>(&'a mut CollectVisitor2<T>);
+            struct InnerVisitor<'a, T: Clone>(&'a mut CollectVisitor<T>);
             impl<'a, T: Clone> InnerVisitor<'a, T> {
                 fn visit_list(&mut self, l: &List<T>) -> ControlFlow<Infallible> {
                     self.0.visit(l)
@@ -116,8 +122,7 @@ fn test_generic_list() {
         }
     }
 
-    let contents = CollectVisitor2::default()
-        .visit_by_val_infallible(&list)
-        .vec;
+    let list: List<u64> = List::Nil.cons(42).cons(1);
+    let contents = CollectVisitor::default().visit_by_val_infallible(&list).vec;
     assert_eq!(contents, vec![1, 42]);
 }
