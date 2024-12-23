@@ -1,6 +1,7 @@
 [workspace.package]
 authors = ["Nadrieril <nadrieril@users.noreply.github.com>"]
 license = "MIT OR Apache-2.0"
+repository = "https://github.com/Nadrieril/derive-generic-visitor"
 
 [workspace]
 resolver = "2"
