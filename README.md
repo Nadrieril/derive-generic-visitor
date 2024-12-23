@@ -1,6 +1,7 @@
-Boilerplate for building visitors, inspired by `derive-visitor`.
+Boilerplate for building visitors, inspired by
+[`derive-visitor`](https://docs.rs/derive-visitor/latest/derive_visitor/).
 
-# Driving a visitor
+## Driving a visitor
 
 The premise of this crate is that to visit a type means to call a function on each of its
 fields. The `Visit[Mut]` and `Drive[Mut]` traits of this module provide the simplest interface
@@ -49,7 +50,7 @@ As you can see, this is not recursive in any way: `x.drive_inner(v)` simply call
 on each field of `x`; it is up to the visitor to recurse into nested structures if it wishes.
 
 
-# Defining useful visitors
+## Defining useful visitors
 
 A visitor is a type that implements `Visit<T>`/`VisitMut<T>` for a set of types `T`. An
 implementation of `Visit[Mut]` typically involves calling `x.drive_inner(self)` to recurse into
@@ -156,7 +157,7 @@ Instead of `Ty`, one can always write `for<A, B, C> Ty<A, B, C>` to make a gener
 called instead of `visit_ty`.
 
 
-# Reusable visitors
+## Reusable visitors
 
 For more complex scenarios where one-off visitor structs would be tedious, this crate provides
 a final macro: `visitable_group`. Given a set of types of interest, this generates a pair of

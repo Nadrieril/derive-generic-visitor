@@ -1,4 +1,5 @@
-//! Boilerplate for building visitors, inspired by `derive-visitor`.
+//! Boilerplate for building visitors, inspired by
+//! [`derive-visitor`](https://docs.rs/derive-visitor/latest/derive_visitor/).
 //!
 //! # Driving a visitor
 //!
