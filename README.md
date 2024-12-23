@@ -1,3 +1,6 @@
+[![crates.io](https://img.shields.io/crates/v/derive_generic_visitor)](https://crates.io/crates/derive_generic_visitor)
+[![docs.rs](https://img.shields.io/docsrs/derive_generic_visitor/latest)](https://docs.rs/derive_generic_visitor/latest/derive_generic_visitor/)
+
 Boilerplate for building visitors, inspired by
 [`derive-visitor`](https://docs.rs/derive-visitor/latest/derive_visitor/).
 
