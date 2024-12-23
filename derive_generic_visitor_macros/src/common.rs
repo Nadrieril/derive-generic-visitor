@@ -13,7 +13,6 @@ pub struct Names {
     pub visit_trait: Path,
     pub drive_trait: Path,
     pub drive_inner_method: Ident,
-    pub drive_method: Ident,
     pub visitor_param: Ident,
     pub lifetime_param: Lifetime,
     pub mut_modifier: Option<Mut>,
@@ -39,11 +38,6 @@ impl Names {
                 parse_quote!(drive_inner_mut)
             } else {
                 parse_quote!(drive_inner)
-            },
-            drive_method: if mutable {
-                parse_quote!(drive_mut)
-            } else {
-                parse_quote!(drive)
             },
             visitor_param: parse_quote!(V),
             lifetime_param: parse_quote!('s),

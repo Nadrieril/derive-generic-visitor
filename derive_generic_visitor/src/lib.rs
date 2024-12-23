@@ -181,7 +181,7 @@
 //! }
 //!
 //! #[visitable_group(
-//!     visitor_shared(ListVisitor), // also available: `visitor_mut`
+//!     visitor(drive_list(&ListVisitor)), // also available: `&mut`
 //!     drive(List, for<T: ListVisitable> Box<T>),
 //!     skip(String),
 //!     override(Node),
@@ -234,7 +234,7 @@
 //! trait ListVisitable {
 //!     /// Recursively visit this type with the provided visitor. This calls the visitor's `visit_$any`
 //!     /// method if it exists, otherwise `visit_inner`.
-//!     fn drive<V: ListVisitor>(&self, v: &mut V) -> ControlFlow<V::Break>;
+//!     fn drive_list<V: ListVisitor>(&self, v: &mut V) -> ControlFlow<V::Break>;
 //! }
 //!
 //! trait ListVisitor: Visitor + Sized {
@@ -244,7 +244,7 @@
 //!         &'a mut self,
 //!         x: &T,
 //!     ) -> ControlFlow<Self::Break> {
-//!         x.drive(self)
+//!         x.drive_list(self)
 //!     }
 //!     /// Visit the contents of `x`. This calls `self.visit()` on each field of `T`. This
 //!     /// is available for any type whose contents are all `#trait_name`.
@@ -273,22 +273,22 @@
 //! }
 //!
 //! impl ListVisitable for List {
-//!     fn drive<V: ListVisitor>(&self, v: &mut V) -> ControlFlow<V::Break> {
+//!     fn drive_list<V: ListVisitor>(&self, v: &mut V) -> ControlFlow<V::Break> {
 //!         v.visit_inner(self)
 //!     }
 //! }
 //! impl<T: ListVisitable> ListVisitable for Box<T> {
-//!     fn drive<V: ListVisitor>(&self, v: &mut V) -> ControlFlow<V::Break> {
+//!     fn drive_list<V: ListVisitor>(&self, v: &mut V) -> ControlFlow<V::Break> {
 //!         v.visit_inner(self)
 //!     }
 //! }
 //! impl ListVisitable for String {
-//!     fn drive<V: ListVisitor>(&self, v: &mut V) -> ControlFlow<V::Break> {
+//!     fn drive_list<V: ListVisitor>(&self, v: &mut V) -> ControlFlow<V::Break> {
 //!         ControlFlow::Continue(())
 //!     }
 //! }
 //! impl ListVisitable for Node {
-//!     fn drive<V: ListVisitor>(&self, v: &mut V) -> ControlFlow<V::Break> {
+//!     fn drive_list<V: ListVisitor>(&self, v: &mut V) -> ControlFlow<V::Break> {
 //!         v.visit_node(self)
 //!     }
 //! }

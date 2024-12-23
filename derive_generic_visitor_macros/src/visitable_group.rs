@@ -1,6 +1,6 @@
 use proc_macro2::{Span, TokenStream};
 use quote::quote;
-use syn::{parse_quote, Ident, ItemImpl, ItemTrait, Result};
+use syn::{parse_quote, Ident, ItemImpl, ItemTrait, Result, Token};
 
 use crate::{GenericTy, Names};
 
@@ -10,10 +10,15 @@ enum TyVisitKind {
     Override(Ident),
 }
 
+struct VisitorDef {
+    vis_trait_name: Ident,
+    method_name: Ident,
+    mutability: Option<Token![mut]>,
+}
+
 #[derive(Default)]
 pub struct Options {
-    visitor_shared: Option<Ident>,
-    visitor_mut: Option<Ident>,
+    visitors: Vec<VisitorDef>,
     tys: Vec<(GenericTy, TyVisitKind)>,
 }
 
@@ -25,19 +30,15 @@ mod parse {
         token, Ident, Result, Token,
     };
 
-    use crate::{visitable_group::TyVisitKind, NamedGenericTy};
+    use crate::{
+        visitable_group::{TyVisitKind, VisitorDef},
+        NamedGenericTy,
+    };
 
     mod kw {
-        syn::custom_keyword!(visitor_shared);
-        syn::custom_keyword!(visitor_mut);
+        syn::custom_keyword!(visitor);
         syn::custom_keyword!(drive);
         syn::custom_keyword!(skip);
-    }
-
-    #[allow(unused)]
-    enum VisitorTraitKind {
-        Shared(kw::visitor_shared),
-        Mut(kw::visitor_mut),
     }
 
     #[allow(unused)]
@@ -48,13 +49,20 @@ mod parse {
     }
 
     enum MacroArg {
-        /// `visitor_{mut,shared}(ident)` sets the name of the visitor trait we will defer to for
-        /// visiting.
+        /// `visitor(method_name(&[mut] trait_name))` sets the name of the visitor trait we will
+        /// defer to for visiting.
         SetVisitorTrait {
-            kind: VisitorTraitKind,
+            #[allow(unused)]
+            vis_tok: kw::visitor,
             #[allow(unused)]
             paren: token::Paren,
-            ident: Ident,
+            method_name: Ident,
+            #[allow(unused)]
+            paren2: token::Paren,
+            #[allow(unused)]
+            ref_tok: Token![&],
+            mutability: Option<Token![mut]>,
+            trait_name: Ident,
         },
         /// `drive` and `override` set which types are part of the group and whether the visitor
         /// traits are allowed to override the visiting behavior of those types. The suntax is
@@ -71,6 +79,7 @@ mod parse {
         fn parse(input: ParseStream) -> Result<Self> {
             let lookahead = input.lookahead1();
             let content;
+            let content2;
             Ok(if lookahead.peek(Token![override]) {
                 MacroArg::SetVisitableTypes {
                     kind: VisitableTypeKind::Override(input.parse()?),
@@ -89,17 +98,15 @@ mod parse {
                     paren: parenthesized!(content in input),
                     tys: Punctuated::parse_terminated(&content)?,
                 }
-            } else if lookahead.peek(kw::visitor_shared) {
+            } else if lookahead.peek(kw::visitor) {
                 MacroArg::SetVisitorTrait {
-                    kind: VisitorTraitKind::Shared(input.parse()?),
+                    vis_tok: input.parse()?,
                     paren: parenthesized!(content in input),
-                    ident: content.parse()?,
-                }
-            } else if lookahead.peek(kw::visitor_mut) {
-                MacroArg::SetVisitorTrait {
-                    kind: VisitorTraitKind::Mut(input.parse()?),
-                    paren: parenthesized!(content in input),
-                    ident: content.parse()?,
+                    method_name: content.parse()?,
+                    paren2: parenthesized!(content2 in content),
+                    ref_tok: content2.parse()?,
+                    mutability: content2.parse()?,
+                    trait_name: content2.parse()?,
                 }
             } else {
                 return Err(lookahead.error());
@@ -111,15 +118,20 @@ mod parse {
         fn parse(input: ParseStream) -> Result<Self> {
             use MacroArg::*;
             use VisitableTypeKind::*;
-            use VisitorTraitKind::*;
             let args: Punctuated<MacroArg, Token![,]> = Punctuated::parse_terminated(input)?;
             let mut options = super::Options::default();
             for arg in args {
                 match arg {
-                    SetVisitorTrait { kind, ident, .. } => match kind {
-                        Shared(_) => options.visitor_shared = Some(ident),
-                        Mut(_) => options.visitor_mut = Some(ident),
-                    },
+                    SetVisitorTrait {
+                        trait_name,
+                        method_name,
+                        mutability,
+                        ..
+                    } => options.visitors.push(VisitorDef {
+                        vis_trait_name: trait_name,
+                        method_name,
+                        mutability,
+                    }),
                     SetVisitableTypes { kind, tys, .. } => {
                         for ty in tys {
                             let kind = match kind {
@@ -143,23 +155,27 @@ pub fn impl_visitable_group(options: Options, mut item: ItemTrait) -> Result<Tok
     let control_flow = &shared_names.control_flow;
     let the_visitor_trait = &shared_names.visitor_trait;
 
-    let mut visitor_traits: Vec<(Ident, Names)> = vec![];
-    if let Some(visitor) = &options.visitor_shared {
-        visitor_traits.push((visitor.clone(), Names::new(false)));
-    }
-    if let Some(visitor) = &options.visitor_mut {
-        visitor_traits.push((visitor.clone(), Names::new(true)));
-    }
+    let visitor_traits: Vec<(VisitorDef, Names)> = options
+        .visitors
+        .into_iter()
+        .map(|vdef| {
+            let names = Names::new(vdef.mutability.is_some());
+            (vdef, names)
+        })
+        .collect();
 
     // Add the `drive` methods to the visitable trait, so that visitable types know how to drive
     // the visitor types.
-    for (visitor, names) in &visitor_traits {
-        let drive_method = &names.drive_method;
-        let mut_modifier = &names.mut_modifier;
+    for (vis_def, _) in &visitor_traits {
+        let VisitorDef {
+            vis_trait_name,
+            method_name,
+            mutability,
+        } = vis_def;
         item.items.push(parse_quote!(
             /// Recursively visit this type with the provided visitor. This calls the visitor's `visit_$any`
             /// method if it exists, otherwise `visit_inner`.
-            fn #drive_method<V: #visitor>(& #mut_modifier self, v: &mut V) -> #control_flow<V::Break>;
+            fn #method_name<V: #vis_trait_name>(& #mutability self, v: &mut V) -> #control_flow<V::Break>;
         ));
     }
 
@@ -181,11 +197,14 @@ pub fn impl_visitable_group(options: Options, mut item: ItemTrait) -> Result<Tok
             let mut timpl: ItemImpl = parse_quote! {
                 impl #impl_generics #trait_name for #ty #where_clause {}
             };
-            for (visitor, names) in &visitor_traits {
-                let drive_method = &names.drive_method;
-                let mut_modifier = &names.mut_modifier;
+            for (vis_def, _) in &visitor_traits {
+                let VisitorDef {
+                    vis_trait_name,
+                    method_name,
+                    mutability,
+                } = vis_def;
                 timpl.items.push(parse_quote!(
-                    fn #drive_method<V: #visitor>(& #mut_modifier self, v: &mut V)
+                    fn #method_name<V: #vis_trait_name>(& #mutability self, v: &mut V)
                         -> #control_flow<V::Break>
                     {
                         #body
@@ -214,15 +233,16 @@ pub fn impl_visitable_group(options: Options, mut item: ItemTrait) -> Result<Tok
             type Break = V::Break;
         }
     );
-    for (visitor, names) in &visitor_traits {
-        let Names {
-            visit_trait,
-            mut_modifier,
+    for (vis_def, names) in &visitor_traits {
+        let Names { visit_trait, .. } = &names;
+        let VisitorDef {
+            vis_trait_name,
+            mutability,
             ..
-        } = &names;
+        } = vis_def;
         impls.push(parse_quote!(
-            impl<'s, V: #visitor, T: #trait_name> #visit_trait<'s, T> for #wrapper_name<V> {
-                fn visit(&mut self, x: &'s #mut_modifier T) -> #control_flow<Self::Break> {
+            impl<'s, V: #vis_trait_name, T: #trait_name> #visit_trait<'s, T> for #wrapper_name<V> {
+                fn visit(&mut self, x: &'s #mutability T) -> #control_flow<Self::Break> {
                     self.0.visit(x)
                 }
             }
@@ -232,26 +252,29 @@ pub fn impl_visitable_group(options: Options, mut item: ItemTrait) -> Result<Tok
     // Define the visitor trait(s).
     let mut traits: Vec<ItemTrait> = vec![];
     let vis = &item.vis;
-    for (visitor, names) in &visitor_traits {
+    for (vis_def, names) in &visitor_traits {
         let Names {
             drive_trait,
             drive_inner_method,
-            drive_method,
-            mut_modifier,
             ..
         } = names;
+        let VisitorDef {
+            vis_trait_name,
+            method_name,
+            mutability,
+        } = vis_def;
         let mut visitor_trait: ItemTrait = parse_quote! {
-            #vis trait #visitor: Visitor + Sized {
+            #vis trait #vis_trait_name: Visitor + Sized {
                 /// Visit a visitable type. This calls the appropriate method of this trait on `x`
                 /// (`visit_$ty` if it exists, `visit_inner` if not).
-                fn visit<'a, T: #trait_name>(&'a mut self, x: & #mut_modifier T)
+                fn visit<'a, T: #trait_name>(&'a mut self, x: & #mutability T)
                     -> #control_flow<Self::Break>
                 {
-                    x.#drive_method(self)
+                    x.#method_name(self)
                 }
 
                 /// Convenience alias for method chaining.
-                fn visit_by_val<T: #trait_name>(mut self, x: & #mut_modifier T)
+                fn visit_by_val<T: #trait_name>(mut self, x: & #mutability T)
                     -> #control_flow<Self::Break, Self>
                 {
                     self.visit(x).map_continue(|()| self)
@@ -259,7 +282,7 @@ pub fn impl_visitable_group(options: Options, mut item: ItemTrait) -> Result<Tok
 
 
                 /// Convenience when the visitor does not return early.
-                fn visit_by_val_infallible<T: #trait_name>(self, x: & #mut_modifier T) -> Self
+                fn visit_by_val_infallible<T: #trait_name>(self, x: & #mutability T) -> Self
                 where
                     Self: #the_visitor_trait<Break=::std::convert::Infallible> + Sized,
                 {
@@ -270,7 +293,7 @@ pub fn impl_visitable_group(options: Options, mut item: ItemTrait) -> Result<Tok
 
                 /// Visit the contents of `x`. This calls `self.visit()` on each field of `T`. This
                 /// is available for any type whose contents are all `#trait_name`.
-                fn visit_inner<T>(&mut self, x: & #mut_modifier T) -> #control_flow<Self::Break>
+                fn visit_inner<T>(&mut self, x: & #mutability T) -> #control_flow<Self::Break>
                 where
                    T: for<'s> #drive_trait<'s, #wrapper_name<Self>>,
                 {
@@ -294,7 +317,7 @@ pub fn impl_visitable_group(options: Options, mut item: ItemTrait) -> Result<Tok
                 /// it if the contents of `x` should not be visited.
                 ///
                 /// The default implementation calls `enter_$ty` then `visit_inner` then `exit_$ty`.
-                fn #visit_method #impl_generics(&mut self, x: &#mut_modifier #ty)
+                fn #visit_method #impl_generics(&mut self, x: &#mutability #ty)
                     -> #control_flow<Self::Break>
                 #where_clause
                 {
@@ -306,11 +329,11 @@ pub fn impl_visitable_group(options: Options, mut item: ItemTrait) -> Result<Tok
             ));
             visitor_trait.items.push(parse_quote!(
                 /// Called when starting to visit a `$ty` (unless `visit_$ty` is overriden).
-                fn #enter_method #impl_generics(&mut self, x: &#mut_modifier #ty) #where_clause {}
+                fn #enter_method #impl_generics(&mut self, x: &#mutability #ty) #where_clause {}
             ));
             visitor_trait.items.push(parse_quote!(
                 /// Called when finished visiting a `$ty` (unless `visit_$ty` is overriden).
-                fn #exit_method #impl_generics(&mut self, x: &#mut_modifier #ty) #where_clause {}
+                fn #exit_method #impl_generics(&mut self, x: &#mutability #ty) #where_clause {}
             ));
         }
         traits.push(visitor_trait);
