@@ -126,3 +126,34 @@ fn test_generic_list2() {
     let contents = CollectVisitor::default().visit_by_val_infallible(&list).vec;
     assert_eq!(contents, vec![1, 42]);
 }
+
+#[test]
+fn test_early_exit() {
+    struct Negative;
+
+    #[derive(Default, Visit)]
+    #[visit(elem: i32)]
+    #[visit(drive(List<i32>, Node<i32>, Box<List<i32>>))]
+    struct SumVisitor {
+        sum: i32,
+    }
+
+    impl Visitor for SumVisitor {
+        type Break = Negative;
+    }
+    impl SumVisitor {
+        fn visit_elem(&mut self, x: &i32) -> ControlFlow<Negative> {
+            if *x < 0 {
+                Break(Negative)
+            } else {
+                self.sum += x;
+                Continue(())
+            }
+        }
+    }
+
+    let list: List<i32> = List::Nil.cons(42).cons(1);
+    assert!(SumVisitor::default().visit_by_val(&list).is_continue());
+    let list: List<i32> = List::Nil.cons(42).cons(-1);
+    assert!(SumVisitor::default().visit_by_val(&list).is_break());
+}

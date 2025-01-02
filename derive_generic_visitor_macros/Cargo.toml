@@ -1,6 +1,6 @@
 [package]
 name = "derive_generic_visitor_macros"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "Macros for `derive_generic_visitor`"
 authors.workspace = true

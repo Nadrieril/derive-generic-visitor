@@ -138,7 +138,7 @@ fn match_variant<'a>(
                 // Destructure this field
                 quote!( #field_id : #var, ),
                 // Call `visitor.visit()` on the field.
-                quote!( <#visitor_param as #visit_trait<#field_ty>>::visit(visitor, #var); ),
+                quote!( <#visitor_param as #visit_trait<#field_ty>>::visit(visitor, #var)?; ),
             )
         })
         .collect();
