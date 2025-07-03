@@ -59,6 +59,27 @@ impl<'s, A, B, V: VisitMut<'s, A> + VisitMut<'s, B>> DriveMut<'s, V> for (A, B) 
     }
 }
 
+impl<'s, A, B, C, V: Visit<'s, A> + Visit<'s, B> + Visit<'s, C>> Drive<'s, V> for (A, B, C) {
+    fn drive_inner(&'s self, v: &mut V) -> ControlFlow<V::Break> {
+        let (x, y, z) = self;
+        v.visit(x)?;
+        v.visit(y)?;
+        v.visit(z)?;
+        Continue(())
+    }
+}
+impl<'s, A, B, C, V: VisitMut<'s, A> + VisitMut<'s, B> + VisitMut<'s, C>> DriveMut<'s, V>
+    for (A, B, C)
+{
+    fn drive_inner_mut(&'s mut self, v: &mut V) -> ControlFlow<V::Break> {
+        let (x, y, z) = self;
+        v.visit(x)?;
+        v.visit(y)?;
+        v.visit(z)?;
+        Continue(())
+    }
+}
+
 impl<'s, A, B, V: Visit<'s, A> + Visit<'s, B>> Drive<'s, V> for Result<A, B> {
     fn drive_inner(&'s self, v: &mut V) -> ControlFlow<V::Break> {
         match self {
