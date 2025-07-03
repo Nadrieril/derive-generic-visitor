@@ -368,3 +368,30 @@ pub trait DriveMut<'s, V: Visitor> {
     /// Call `v.visit()` on the immediate contents of `self`.
     fn drive_inner_mut(&'s mut self, v: &mut V) -> ControlFlow<V::Break>;
 }
+
+/// Drive through an iterable type. Useful for collections in third-party crates for which there
+/// isn't a `Drive` impl.
+pub fn drive_iter<'a, C, T, V>(iterable: C, v: &mut V) -> ControlFlow<<V as Visitor>::Break>
+where
+    C: IntoIterator<Item = &'a T>,
+    V: Visit<'a, T>,
+    T: 'a,
+{
+    for x in iterable {
+        v.visit(x)?;
+    }
+    Continue(())
+}
+/// Drive through an iterable type. Useful for collections in third-party crates for which there
+/// isn't a `Drive` impl.
+pub fn drive_iter_mut<'a, C, T, V>(iterable: C, v: &mut V) -> ControlFlow<<V as Visitor>::Break>
+where
+    C: IntoIterator<Item = &'a mut T>,
+    V: VisitMut<'a, T>,
+    T: 'a,
+{
+    for x in iterable {
+        v.visit(x)?;
+    }
+    Continue(())
+}
