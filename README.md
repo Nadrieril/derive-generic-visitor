@@ -151,6 +151,7 @@ The options available are:
 - `enter(Ty)`: call `self.enter_ty(x)` before recursing with `drive_inner`.
 - `exit(Ty)`: call `self.exit_ty(x)` after recursing with `drive_inner`.
 - `override(Ty)`: call `self.visit_ty(x)?`, which may or may not recurse if it wishes to.
+- `override_skip(Ty)`: just like `override(Ty)`, but the default implementation does nothing.
 - `drive(Ty)`: recurse with `drive_inner`.
 - `skip(Ty)`: do nothing.
 - `Ty`: alias for `override(Ty)`

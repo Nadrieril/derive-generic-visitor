@@ -181,7 +181,8 @@ fn infaillible_visitable_group() {
         visitor(drive(&AstVisitor), infaillible),
         skip(usize, String),
         drive(for<T: AstVisitable> Box<T>),
-        override(Pat, Expr, Id),
+        override(Pat, Expr),
+        override_skip(Id),
     )]
     trait AstVisitable {}
 

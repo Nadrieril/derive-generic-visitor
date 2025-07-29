@@ -7,7 +7,7 @@ use crate::{GenericTy, Names};
 enum TyVisitKind {
     Skip,
     Drive,
-    Override(Ident),
+    Override { skip: bool, name: Ident },
 }
 
 struct VisitorDef {
@@ -41,6 +41,7 @@ mod parse {
         syn::custom_keyword!(drive);
         syn::custom_keyword!(skip);
         syn::custom_keyword!(infaillible);
+        syn::custom_keyword!(override_skip);
     }
 
     #[allow(unused)]
@@ -48,6 +49,7 @@ mod parse {
         Skip(kw::skip),
         Drive(kw::drive),
         Override(Token![override]),
+        OverrideSkip(kw::override_skip),
     }
 
     enum MacroArg {
@@ -86,6 +88,12 @@ mod parse {
             Ok(if lookahead.peek(Token![override]) {
                 MacroArg::SetVisitableTypes {
                     kind: VisitableTypeKind::Override(input.parse()?),
+                    paren: parenthesized!(content in input),
+                    tys: Punctuated::parse_terminated(&content)?,
+                }
+            } else if lookahead.peek(kw::override_skip) {
+                MacroArg::SetVisitableTypes {
+                    kind: VisitableTypeKind::OverrideSkip(input.parse()?),
                     paren: parenthesized!(content in input),
                     tys: Punctuated::parse_terminated(&content)?,
                 }
@@ -147,7 +155,14 @@ mod parse {
                             let kind = match kind {
                                 Skip(_) => TyVisitKind::Skip,
                                 Drive(_) => TyVisitKind::Drive,
-                                Override(_) => TyVisitKind::Override(ty.get_name()?),
+                                Override(_) => TyVisitKind::Override {
+                                    skip: false,
+                                    name: ty.get_name()?,
+                                },
+                                OverrideSkip(_) => TyVisitKind::Override {
+                                    skip: true,
+                                    name: ty.get_name()?,
+                                },
                             };
                             options.tys.push((ty.ty, kind));
                         }
@@ -212,7 +227,7 @@ pub fn impl_visitable_group(options: Options, mut item: ItemTrait) -> Result<Tok
                     TyVisitKind::Skip if *faillible => quote!( #control_flow::Continue(()) ),
                     TyVisitKind::Skip => quote!(()),
                     TyVisitKind::Drive => quote!(v.visit_inner(self)),
-                    TyVisitKind::Override(name) => {
+                    TyVisitKind::Override { name, .. } => {
                         let method = Ident::new(&format!("visit_{name}"), Span::call_site());
                         quote!( v.#method(self) )
                     }
@@ -386,7 +401,7 @@ pub fn impl_visitable_group(options: Options, mut item: ItemTrait) -> Result<Tok
         };
         // Add the overrideable methods.
         for (ty, kind) in &options.tys {
-            let TyVisitKind::Override(name) = kind else {
+            let TyVisitKind::Override { name, skip } = kind else {
                 continue;
             };
             let visit_method = Ident::new(&format!("visit_{name}"), Span::call_site());
@@ -397,6 +412,11 @@ pub fn impl_visitable_group(options: Options, mut item: ItemTrait) -> Result<Tok
             let question_mark = faillible.then_some(quote!(?));
             let return_type = faillible.then_some(quote!(-> #control_flow<Self::Break>));
             let return_value = faillible.then_some(quote!(Continue(())));
+            let body = (!skip).then_some(quote! {
+                    self.#enter_method(x);
+                    self.visit_inner(x)#question_mark;
+                    self.#exit_method(x);
+            });
             visitor_trait.items.push(parse_quote!(
                 /// Overrideable method called when visiting a `$ty`. When overriding this method,
                 /// call `self.visit_inner(x)` to keep recursively visiting the type, or don't call
@@ -407,9 +427,7 @@ pub fn impl_visitable_group(options: Options, mut item: ItemTrait) -> Result<Tok
                     #return_type
                 #where_clause
                 {
-                       self.#enter_method(x);
-                       self.visit_inner(x)#question_mark;
-                       self.#exit_method(x);
+                       #body
                        #return_value
                 }
             ));
