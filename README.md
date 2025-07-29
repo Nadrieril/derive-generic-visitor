@@ -251,10 +251,10 @@ trait ListVisitor: Visitor + Sized {
         x.drive_list(self)
     }
     /// Visit the contents of `x`. This calls `self.visit()` on each field of `T`. This
-    /// is available for any type whose contents are all `#trait_name`.
+    /// is available for any `ListVisitable` type whose contents are all `ListVisitable`.
     fn visit_inner<T>(&mut self, x: &T) -> ControlFlow<Self::Break>
     where
-        T: for<'s> Drive<'s, ListVisitableWrapper<Self>>,
+        T: for<'s> Drive<'s, ListVisitableWrapper<Self>> + ListVisitable,
     {
         x.drive_inner(ListVisitableWrapper::wrap(self))
     }

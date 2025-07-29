@@ -295,6 +295,7 @@ pub fn impl_visitable_group(options: Options, mut item: ItemTrait) -> Result<Tok
                 /// is available for any type whose contents are all `#trait_name`.
                 fn visit_inner<T>(&mut self, x: & #mutability T) -> #control_flow<Self::Break>
                 where
+                   T: #trait_name,
                    T: for<'s> #drive_trait<'s, #wrapper_name<Self>>,
                 {
                     x.#drive_inner_method(#wrapper_name::wrap(self))
