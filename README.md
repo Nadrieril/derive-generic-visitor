@@ -297,3 +297,15 @@ impl ListVisitable for Node {
     }
 }
 ```
+
+To illustrate, the typical visit loop would look like, given a `MyVisitor: ListVisitor`:
+- `<MyVisitor as ListVisitor>::visit(v, x)`
+- `<Node as GroupVisitable>::drive_list(x, v)` // assuming `x: Node`
+- `<MyVisitor as ListVisitor>::visit_node(v, x)` // here lives custom behavior
+- `<MyVisitor as ListVisitor>::visit_inner(v, x)`
+- `<Node as Drive>::drive_inner(ListVisitor(v))`
+- calls `<MyVisitor as ListVisitor>::visit(v, &x.field)` on each field of `x`
+
+Note: the `visitable_group` interface makes it possible to write composable visitor wrappers
+that provide reusable functionality. For an example, see
+[`derive_generic_visitor/tests/visitable_group_wrapper.rs`].

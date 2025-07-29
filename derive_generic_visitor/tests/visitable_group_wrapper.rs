@@ -1,3 +1,30 @@
+//! This file tests and showcases the possibility for reusable visitor wrappers with the
+//! `visitable_group` interface.
+//!
+//! The idea is as follows: a `VisitorWrapper<V>(&mut V)` wraps a `V: GroupVisitor`, and its `visit_inner`
+//! method calls back into the wrapped visitor. The wrapper can then override its visitor methods
+//! as usual to provide extra functionality. Typically, the `V` will have an extra bound so that
+//! the wrapper can interact with the wrappee (in the test below, the bounds are `VisitorWithSum`
+//! and `VisitorWithDepth`).
+//!
+//! To make use of this, write a visitor as normal and override its `visit` method to call
+//! `VisitorWrapper(self).visit(x)`. The resulting loop looks like follows:
+//! - `<MyVisitor as GroupVisitor>::visit(v, x)`
+//! - new: `<VisitorWrapper<MyVisitor> as GroupVisitor>::visit(v, x)`
+//! - new: `<MyType as GroupVisitable>::drive(x, v)` // assuming `x: MyType`
+//! - new: `<VisitorWrapper<MyVisitor> as GroupVisitor>::visit_my_type(v, x)` // here lives wrapper behavior
+//! - new: `<VisitorWrapper<MyVisitor> as GroupVisitor>::visit_inner(v, x)`
+//! - `<MyType as GroupVisitable>::drive(x, v)` // assuming `x: MyType`
+//! - `<MyVisitor as GroupVisitor>::visit_my_type(v, x)` // here lives wrappee behavior
+//! - `<MyVisitor as GroupVisitor>::visit_inner(v, x)`
+//! - `<MyType as Drive>::drive_inner(GroupVisitorWrapper(v))`
+//! - calls `<MyVisitor as GroupVisitor>::visit(v, &x.field)` on each field of `x`
+//!
+//! The lines marked "new" are those that are added by calling into the wrapper. The remaining
+//! lines are the normal loop of the inner visitor. As you can see, the wrapper behavior is
+//! seamlessly inserted into the normal visit loop of `MyVisitor`. Note how the wrapper visitor is
+//! not a recursive visitor: it's a shallow thing that calls its custom code then forwards to the
+//! wrapped visitor.
 use derive_generic_visitor::*;
 
 #[derive(Drive, DriveMut)]
