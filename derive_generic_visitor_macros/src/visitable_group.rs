@@ -65,7 +65,7 @@ mod parse {
             trait_name: Ident,
         },
         /// `drive` and `override` set which types are part of the group and whether the visitor
-        /// traits are allowed to override the visiting behavior of those types. The suntax is
+        /// traits are allowed to override the visiting behavior of those types. The syntax is
         /// exactly like that of the `Visit[Mut]` traits.
         SetVisitableTypes {
             kind: VisitableTypeKind,
