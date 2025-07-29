@@ -353,6 +353,7 @@ pub fn impl_visitable_group(options: Options, mut item: ItemTrait) -> Result<Tok
                 /// is available for any type whose contents are all `#trait_name`.
                 fn visit_inner<T>(&mut self, x: & #mutability T)
                 where
+                T: #trait_name,
                 T: for<'s> #drive_trait<'s, #infaillible_wrapper_name<Self>>,
                 {
                     match x.#drive_inner_method(#infaillible_wrapper_name::wrap(self)) {
