@@ -14,6 +14,7 @@ struct VisitorDef {
     vis_trait_name: Ident,
     method_name: Ident,
     mutability: Option<Token![mut]>,
+    faillible: bool,
 }
 
 #[derive(Default)]
@@ -39,6 +40,7 @@ mod parse {
         syn::custom_keyword!(visitor);
         syn::custom_keyword!(drive);
         syn::custom_keyword!(skip);
+        syn::custom_keyword!(infaillible);
     }
 
     #[allow(unused)]
@@ -63,6 +65,7 @@ mod parse {
             ref_tok: Token![&],
             mutability: Option<Token![mut]>,
             trait_name: Ident,
+            infaillible: Option<(Token![,], kw::infaillible)>,
         },
         /// `drive` and `override` set which types are part of the group and whether the visitor
         /// traits are allowed to override the visiting behavior of those types. The syntax is
@@ -107,6 +110,11 @@ mod parse {
                     ref_tok: content2.parse()?,
                     mutability: content2.parse()?,
                     trait_name: content2.parse()?,
+                    infaillible: if content.peek(Token![,]) {
+                        Some((content.parse()?, content.parse()?))
+                    } else {
+                        None
+                    },
                 }
             } else {
                 return Err(lookahead.error());
@@ -126,11 +134,13 @@ mod parse {
                         trait_name,
                         method_name,
                         mutability,
+                        infaillible,
                         ..
                     } => options.visitors.push(VisitorDef {
                         vis_trait_name: trait_name,
                         method_name,
                         mutability,
+                        faillible: infaillible.is_none(),
                     }),
                     SetVisitableTypes { kind, tys, .. } => {
                         for ty in tys {
@@ -171,11 +181,13 @@ pub fn impl_visitable_group(options: Options, mut item: ItemTrait) -> Result<Tok
             vis_trait_name,
             method_name,
             mutability,
+            faillible,
         } = vis_def;
+        let return_type = faillible.then_some(quote!(-> #control_flow<V::Break>));
         item.items.push(parse_quote!(
             /// Recursively visit this type with the provided visitor. This calls the visitor's `visit_$any`
             /// method if it exists, otherwise `visit_inner`.
-            fn #method_name<V: #vis_trait_name>(& #mutability self, v: &mut V) -> #control_flow<V::Break>;
+            fn #method_name<V: #vis_trait_name>(& #mutability self, v: &mut V) #return_type;
         ));
     }
 
@@ -183,15 +195,7 @@ pub fn impl_visitable_group(options: Options, mut item: ItemTrait) -> Result<Tok
     let mut impls: Vec<ItemImpl> = options
         .tys
         .iter()
-        .map(|(ty, kind)| {
-            let body = match kind {
-                TyVisitKind::Skip => quote!( #control_flow::Continue(()) ),
-                TyVisitKind::Drive => quote!(v.visit_inner(self)),
-                TyVisitKind::Override(name) => {
-                    let method = Ident::new(&format!("visit_{name}"), Span::call_site());
-                    quote!( v.#method(self) )
-                }
-            };
+        .flat_map(|(ty, kind)| {
             let (impl_generics, _, where_clause) = ty.generics.split_for_impl();
             let ty = &ty.ty;
             let mut timpl: ItemImpl = parse_quote! {
@@ -202,51 +206,97 @@ pub fn impl_visitable_group(options: Options, mut item: ItemTrait) -> Result<Tok
                     vis_trait_name,
                     method_name,
                     mutability,
+                    faillible,
                 } = vis_def;
+                let body = match kind {
+                    TyVisitKind::Skip if *faillible => quote!( #control_flow::Continue(()) ),
+                    TyVisitKind::Skip => quote!(()),
+                    TyVisitKind::Drive => quote!(v.visit_inner(self)),
+                    TyVisitKind::Override(name) => {
+                        let method = Ident::new(&format!("visit_{name}"), Span::call_site());
+                        quote!( v.#method(self) )
+                    }
+                };
+                let return_type = faillible.then_some(quote!(-> #control_flow<V::Break>));
                 timpl.items.push(parse_quote!(
                     fn #method_name<V: #vis_trait_name>(& #mutability self, v: &mut V)
-                        -> #control_flow<V::Break>
+                        #return_type
                     {
                         #body
                     }
                 ));
             }
-            timpl
+            Some(timpl)
         })
         .collect();
 
     // Define a wrapper type that implements `Visit[Mut]` to pass through the `Drive[Mut]` API.
     let wrapper_name = Ident::new(&format!("{trait_name}Wrapper"), Span::call_site());
-    let visitor_wrapper = quote!(
-        /// Implementation detail: wrapper that implements `Visit[Mut]<T>` for `T: #trait_name`,
-        /// and delegates all the visiting to our trait's `drive[_mut]`. Used in the implementation
-        /// of `visit_inner`
-        #[repr(transparent)]
-        pub struct #wrapper_name<V: ?Sized>(V);
-        impl<V: ?Sized> #wrapper_name<V> {
-            fn wrap(x: &mut V) -> &mut Self {
-                // SAFETY: `repr(transparent)`
-                unsafe { std::mem::transmute(x) }
-            }
-        }
-        impl<V: Visitor> Visitor for #wrapper_name<V> {
-            type Break = V::Break;
-        }
+    let infaillible_wrapper_name = Ident::new(
+        &format!("{trait_name}InfaillibleWrapper"),
+        Span::call_site(),
     );
+    let visitor_wrappers = {
+        let define_struct = |wrapper_name: &Ident| {
+            quote!(
+            /// Implementation detail: wrapper that implements `Visit[Mut]<T>` for `T: #trait_name`,
+            /// and delegates all the visiting to our trait's `drive[_mut]`. Used in the implementation
+            /// of `visit_inner`
+            #[repr(transparent)]
+            pub struct #wrapper_name<V: ?Sized>(V);
+            impl<V: ?Sized> #wrapper_name<V> {
+                fn wrap(x: &mut V) -> &mut Self {
+                    // SAFETY: `repr(transparent)`
+                    unsafe { std::mem::transmute(x) }
+                }
+            })
+        };
+        let wrapper_struct = define_struct(&wrapper_name);
+        let wrapper_visitor = quote!(
+            #wrapper_struct
+            impl<V: Visitor> Visitor for #wrapper_name<V> {
+                type Break = V::Break;
+            }
+        );
+        let infaillible_wrapper_struct = define_struct(&infaillible_wrapper_name);
+        let any_infaillible_visitor = !visitor_traits.iter().all(|(v, _)| v.faillible);
+        let infaillible_wrapper_visitor = any_infaillible_visitor.then_some(quote!(
+            #infaillible_wrapper_struct
+            impl<V> Visitor for #infaillible_wrapper_name<V> {
+                type Break = std::convert::Infallible;
+            }
+        ));
+        quote!(
+            #wrapper_visitor
+            #infaillible_wrapper_visitor
+        )
+    };
     for (vis_def, names) in &visitor_traits {
         let Names { visit_trait, .. } = &names;
         let VisitorDef {
             vis_trait_name,
             mutability,
+            faillible,
             ..
         } = vis_def;
+        let wrapper_name = if *faillible {
+            &wrapper_name
+        } else {
+            &infaillible_wrapper_name
+        };
+
+        let mut body = quote!(self.0.visit(x));
+        if !faillible {
+            body = quote!(Continue(#body));
+        }
+
         impls.push(parse_quote!(
             impl<'s, V: #vis_trait_name, T: #trait_name> #visit_trait<'s, T> for #wrapper_name<V> {
                 fn visit(&mut self, x: &'s #mutability T) -> #control_flow<Self::Break> {
-                    self.0.visit(x)
+                    #body
                 }
             }
-        ));
+        ))
     }
 
     // Define the visitor trait(s).
@@ -262,44 +312,76 @@ pub fn impl_visitable_group(options: Options, mut item: ItemTrait) -> Result<Tok
             vis_trait_name,
             method_name,
             mutability,
+            faillible,
         } = vis_def;
+        let return_type = faillible.then_some(quote!(-> #control_flow<Self::Break>));
+        let return_type_val = if *faillible {
+            quote!(-> #control_flow<Self::Break, Self>)
+        } else {
+            quote!(-> Self)
+        };
+        let visit_inner = if *faillible {
+            quote! {
+                /// Visit the contents of `x`. This calls `self.visit()` on each field of `T`. This
+                /// is available for any type whose contents are all `#trait_name`.
+                fn visit_inner<T>(&mut self, x: & #mutability T) #return_type
+                where
+                T: #trait_name,
+                T: for<'s> #drive_trait<'s, #wrapper_name<Self>>,
+                {
+                    x.#drive_inner_method(#wrapper_name::wrap(self))
+                }
+            }
+        } else {
+            quote! {
+                /// Visit the contents of `x`. This calls `self.visit()` on each field of `T`. This
+                /// is available for any type whose contents are all `#trait_name`.
+                fn visit_inner<T>(&mut self, x: & #mutability T)
+                where
+                T: for<'s> #drive_trait<'s, #infaillible_wrapper_name<Self>>,
+                {
+                    match x.#drive_inner_method(#infaillible_wrapper_name::wrap(self)) {
+                        #control_flow::Continue(x) => x,
+                    }
+                }
+            }
+        };
+        let visitor_contstraints = faillible.then_some(quote!(Visitor+));
+        let visit_by_val_infallible = faillible.then_some(quote!(
+            /// Convenience when the visitor does not return early.
+            fn visit_by_val_infallible<T: #trait_name>(self, x: & #mutability T) -> Self
+            where
+                Self: #the_visitor_trait<Break=::std::convert::Infallible> + Sized,
+            {
+                match self.visit_by_val(x) {
+                    #control_flow::Continue(x) => x,
+                }
+            }
+        ));
+        let visit_by_val_body = if *faillible {
+            quote!(self.visit(x).map_continue(|()| self))
+        } else {
+            quote!( self.visit(x); self )
+        };
         let mut visitor_trait: ItemTrait = parse_quote! {
-            #vis trait #vis_trait_name: Visitor + Sized {
+            #vis trait #vis_trait_name: #visitor_contstraints Sized where  {
                 /// Visit a visitable type. This calls the appropriate method of this trait on `x`
                 /// (`visit_$ty` if it exists, `visit_inner` if not).
                 fn visit<'a, T: #trait_name>(&'a mut self, x: & #mutability T)
-                    -> #control_flow<Self::Break>
+                    #return_type
                 {
                     x.#method_name(self)
                 }
 
                 /// Convenience alias for method chaining.
                 fn visit_by_val<T: #trait_name>(mut self, x: & #mutability T)
-                    -> #control_flow<Self::Break, Self>
+                    #return_type_val
                 {
-                    self.visit(x).map_continue(|()| self)
+                    #visit_by_val_body
                 }
 
-
-                /// Convenience when the visitor does not return early.
-                fn visit_by_val_infallible<T: #trait_name>(self, x: & #mutability T) -> Self
-                where
-                    Self: #the_visitor_trait<Break=::std::convert::Infallible> + Sized,
-                {
-                    match self.visit_by_val(x) {
-                        #control_flow::Continue(x) => x,
-                    }
-                }
-
-                /// Visit the contents of `x`. This calls `self.visit()` on each field of `T`. This
-                /// is available for any type whose contents are all `#trait_name`.
-                fn visit_inner<T>(&mut self, x: & #mutability T) -> #control_flow<Self::Break>
-                where
-                   T: #trait_name,
-                   T: for<'s> #drive_trait<'s, #wrapper_name<Self>>,
-                {
-                    x.#drive_inner_method(#wrapper_name::wrap(self))
-                }
+                #visit_by_val_infallible
+                #visit_inner
             }
         };
         // Add the overrideable methods.
@@ -312,6 +394,9 @@ pub fn impl_visitable_group(options: Options, mut item: ItemTrait) -> Result<Tok
             let exit_method = Ident::new(&format!("exit_{name}"), Span::call_site());
             let (impl_generics, _, where_clause) = ty.generics.split_for_impl();
             let ty = &ty.ty;
+            let question_mark = faillible.then_some(quote!(?));
+            let return_type = faillible.then_some(quote!(-> #control_flow<Self::Break>));
+            let return_value = faillible.then_some(quote!(Continue(())));
             visitor_trait.items.push(parse_quote!(
                 /// Overrideable method called when visiting a `$ty`. When overriding this method,
                 /// call `self.visit_inner(x)` to keep recursively visiting the type, or don't call
@@ -319,13 +404,13 @@ pub fn impl_visitable_group(options: Options, mut item: ItemTrait) -> Result<Tok
                 ///
                 /// The default implementation calls `enter_$ty` then `visit_inner` then `exit_$ty`.
                 fn #visit_method #impl_generics(&mut self, x: &#mutability #ty)
-                    -> #control_flow<Self::Break>
+                    #return_type
                 #where_clause
                 {
                        self.#enter_method(x);
-                       self.visit_inner(x)?;
+                       self.visit_inner(x)#question_mark;
                        self.#exit_method(x);
-                       Continue(())
+                       #return_value
                 }
             ));
             visitor_trait.items.push(parse_quote!(
@@ -343,7 +428,7 @@ pub fn impl_visitable_group(options: Options, mut item: ItemTrait) -> Result<Tok
     traits.insert(0, item);
 
     Ok(quote!(
-        #visitor_wrapper
+        #visitor_wrappers
         #(#traits)*
         #(#impls)*
     ))

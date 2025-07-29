@@ -306,6 +306,9 @@ To illustrate, the typical visit loop would look like, given a `MyVisitor: ListV
 - `<Node as Drive>::drive_inner(ListVisitorWrapper(v))`
 - calls `<MyVisitor as ListVisitor>::visit(v, &x.field)` on each field of `x`
 
-Note: the `visitable_group` interface makes it possible to write composable visitor wrappers
-that provide reusable functionality. For an example, see
+Notes: 
+ - the `visitable_group` interface makes it possible to write composable visitor
+wrappers that provide reusable functionality. For an example, see
 [`derive_generic_visitor/tests/visitable_group_wrapper.rs`].
+ - it is also able to generate a infaillable trait interface, e.g. a trait where the `visit_$ty`, `enter_$ty`, etc. methods return `()` instead of `ControlFlow<Infaillible>`.
+
