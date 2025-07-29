@@ -300,7 +300,7 @@
 //! - `<Node as GroupVisitable>::drive_list(x, v)` // assuming `x: Node`
 //! - `<MyVisitor as ListVisitor>::visit_node(v, x)` // here lives custom behavior
 //! - `<MyVisitor as ListVisitor>::visit_inner(v, x)`
-//! - `<Node as Drive>::drive_inner(ListVisitor(v))`
+//! - `<Node as Drive>::drive_inner(ListVisitorWrapper(v))`
 //! - calls `<MyVisitor as ListVisitor>::visit(v, &x.field)` on each field of `x`
 //!
 //! Note: the `visitable_group` interface makes it possible to write composable visitor wrappers
