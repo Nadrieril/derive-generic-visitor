@@ -225,7 +225,7 @@ pub fn impl_visitable_group(options: Options, mut item: ItemTrait) -> Result<Tok
                 } = vis_def;
                 let body = match kind {
                     TyVisitKind::Skip if *faillible => quote!( #control_flow::Continue(()) ),
-                    TyVisitKind::Skip => quote!(()),
+                    TyVisitKind::Skip => quote!(),
                     TyVisitKind::Drive => quote!(v.visit_inner(self)),
                     TyVisitKind::Override { name, .. } => {
                         let method = Ident::new(&format!("visit_{name}"), Span::call_site());
