@@ -151,7 +151,6 @@ The options available are:
 - `enter(Ty)`: call `self.enter_ty(x)` before recursing with `drive_inner`.
 - `exit(Ty)`: call `self.exit_ty(x)` after recursing with `drive_inner`.
 - `override(Ty)`: call `self.visit_ty(x)?`, which may or may not recurse if it wishes to.
-- `override_skip(Ty)`: just like `override(Ty)`, but the default implementation does nothing.
 - `drive(Ty)`: recurse with `drive_inner`.
 - `skip(Ty)`: do nothing.
 - `Ty`: alias for `override(Ty)`
@@ -307,9 +306,14 @@ To illustrate, the typical visit loop would look like, given a `MyVisitor: ListV
 - `<Node as Drive>::drive_inner(ListVisitorWrapper(v))`
 - calls `<MyVisitor as ListVisitor>::visit(v, &x.field)` on each field of `x`
 
-Notes: 
+The options available for the `visitable_group` macro are:
+- `visitor(drive_method_name(&[mut]TraitName)[, infaillible])`: derive a visitor trait named `TraitName`.
+  - the presence of `mut` determines whether the `TraitName` visitor will operate on mutable or immutable borrows.
+  - the optional `infaillible` flag enables an infaillible-style interface for the visitor:, where its methods `visit_$ty` return `()` instead of `ControlFlow<_>`.
+- `override_skip(Ty)`: similar to `override(Ty)`, but the default implementation does nothing, and no `enter_Ty` or `exit_Ty` methods are generated.
+- `override(Ty)`, `drive(Ty)` and `skip(Ty)`: behave the same as their counterparts in the `Visit` and `VisitMut` derives.
+
+Notes:
  - the `visitable_group` interface makes it possible to write composable visitor
 wrappers that provide reusable functionality. For an example, see
 [`derive_generic_visitor/tests/visitable_group_wrapper.rs`].
- - it is also able to generate a infaillable trait interface, e.g. a trait where the `visit_$ty`, `enter_$ty`, etc. methods return `()` instead of `ControlFlow<Infaillible>`.
-
