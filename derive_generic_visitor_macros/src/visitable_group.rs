@@ -432,14 +432,16 @@ pub fn impl_visitable_group(options: Options, mut item: ItemTrait) -> Result<Tok
                        #return_value
                 }
             ));
-            visitor_trait.items.push(parse_quote!(
-                /// Called when starting to visit a `$ty` (unless `visit_$ty` is overriden).
-                fn #enter_method #impl_generics(&mut self, x: &#mutability #ty) #where_clause {}
-            ));
-            visitor_trait.items.push(parse_quote!(
-                /// Called when finished visiting a `$ty` (unless `visit_$ty` is overriden).
-                fn #exit_method #impl_generics(&mut self, x: &#mutability #ty) #where_clause {}
-            ));
+            if !skip {
+                visitor_trait.items.push(parse_quote!(
+                    /// Called when starting to visit a `$ty` (unless `visit_$ty` is overriden).
+                    fn #enter_method #impl_generics(&mut self, x: &#mutability #ty) #where_clause {}
+                ));
+                visitor_trait.items.push(parse_quote!(
+                    /// Called when finished visiting a `$ty` (unless `visit_$ty` is overriden).
+                    fn #exit_method #impl_generics(&mut self, x: &#mutability #ty) #where_clause {}
+                ));
+            }
         }
         traits.push(visitor_trait);
     }
