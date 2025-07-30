@@ -19,8 +19,11 @@ fn infallible_visitable_group() {
     }
 
     #[visitable_group(
-        // Declares an infallible visitor: its interface hides away `ControlFlow`s.
-        visitor(drive(&AstVisitor), infallible),
+        // Declares an infaillible visitor: its interface hides away `ControlFlow`s.
+        visitor(drive(
+            /// Documentation. Or any attribute, really.
+            &AstVisitor
+        ), infaillible),
         skip(usize, String),
         drive(for<T: AstVisitable> Box<T>),
         override(Pat, Expr),
