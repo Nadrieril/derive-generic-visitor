@@ -210,7 +210,7 @@ pub fn impl_visitable_group(options: Options, mut item: ItemTrait) -> Result<Tok
     let mut impls: Vec<ItemImpl> = options
         .tys
         .iter()
-        .flat_map(|(ty, kind)| {
+        .map(|(ty, kind)| {
             let (impl_generics, _, where_clause) = ty.generics.split_for_impl();
             let ty = &ty.ty;
             let mut timpl: ItemImpl = parse_quote! {
@@ -241,7 +241,7 @@ pub fn impl_visitable_group(options: Options, mut item: ItemTrait) -> Result<Tok
                     }
                 ));
             }
-            Some(timpl)
+            timpl
         })
         .collect();
 
