@@ -362,7 +362,7 @@ pub fn impl_visitable_group(options: Options, mut item: ItemTrait) -> Result<Tok
                 }
             }
         };
-        let visitor_contstraints = faillible.then_some(quote!(Visitor+));
+        let visitor_constraints = faillible.then_some(quote!(Visitor+));
         let visit_by_val_infallible = faillible.then_some(quote!(
             /// Convenience when the visitor does not return early.
             fn visit_by_val_infallible<T: #trait_name>(self, x: & #mutability T) -> Self
@@ -380,7 +380,7 @@ pub fn impl_visitable_group(options: Options, mut item: ItemTrait) -> Result<Tok
             quote!( self.visit(x); self )
         };
         let mut visitor_trait: ItemTrait = parse_quote! {
-            #vis trait #vis_trait_name: #visitor_contstraints Sized where  {
+            #vis trait #vis_trait_name: #visitor_constraints Sized where  {
                 /// Visit a visitable type. This calls the appropriate method of this trait on `x`
                 /// (`visit_$ty` if it exists, `visit_inner` if not).
                 fn visit<'a, T: #trait_name>(&'a mut self, x: & #mutability T)
