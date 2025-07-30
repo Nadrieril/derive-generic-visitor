@@ -335,7 +335,18 @@ pub fn impl_visitable_group(options: Options, mut item: ItemTrait) -> Result<Tok
         } else {
             quote!(-> Self)
         };
-        let visit_inner = if *faillible {
+        let visit_inner = {
+            let wrapper_name = if *faillible {
+                &wrapper_name
+            } else {
+                &infaillible_wrapper_name
+            };
+            let mut body = quote! {x.#drive_inner_method(#wrapper_name::wrap(self))};
+            if !*faillible {
+                body = quote!(match #body {
+                    #control_flow::Continue(x) => x,
+                });
+            }
             quote! {
                 /// Visit the contents of `x`. This calls `self.visit()` on each field of `T`. This
                 /// is available for any type whose contents are all `#trait_name`.
@@ -344,21 +355,7 @@ pub fn impl_visitable_group(options: Options, mut item: ItemTrait) -> Result<Tok
                 T: #trait_name,
                 T: for<'s> #drive_trait<'s, #wrapper_name<Self>>,
                 {
-                    x.#drive_inner_method(#wrapper_name::wrap(self))
-                }
-            }
-        } else {
-            quote! {
-                /// Visit the contents of `x`. This calls `self.visit()` on each field of `T`. This
-                /// is available for any type whose contents are all `#trait_name`.
-                fn visit_inner<T>(&mut self, x: & #mutability T)
-                where
-                T: #trait_name,
-                T: for<'s> #drive_trait<'s, #infaillible_wrapper_name<Self>>,
-                {
-                    match x.#drive_inner_method(#infaillible_wrapper_name::wrap(self)) {
-                        #control_flow::Continue(x) => x,
-                    }
+                    #body
                 }
             }
         };
