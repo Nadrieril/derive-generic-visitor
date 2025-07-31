@@ -315,7 +315,6 @@ The options available for the `visitable_group` macro are:
 - `override_skip(Ty)`: similar to `override(Ty)`, but the default implementation does nothing, and no `enter_Ty` or `exit_Ty` methods are generated.
 - `override(Ty)`, `drive(Ty)` and `skip(Ty)`: behave the same as their counterparts in the `Visit` and `VisitMut` derives.
 
-Notes:
- - the `visitable_group` interface makes it possible to write composable visitor
-wrappers that provide reusable functionality. For an example, see
+Note: the `visitable_group` interface makes it possible to write composable
+visitor wrappers that provide reusable functionality. For an example, see
 [`derive_generic_visitor/tests/visitable_group_wrapper.rs`].
