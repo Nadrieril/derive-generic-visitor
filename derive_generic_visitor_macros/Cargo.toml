@@ -3,6 +3,7 @@ name = "derive_generic_visitor_macros"
 version = "0.2.0"
 edition = "2021"
 description = "Macros for `derive_generic_visitor`"
+readme = "../README.md"
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
