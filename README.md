@@ -1,6 +1,8 @@
 [![crates.io](https://img.shields.io/crates/v/derive_generic_visitor)](https://crates.io/crates/derive_generic_visitor)
 [![docs.rs](https://img.shields.io/docsrs/derive_generic_visitor/latest)](https://docs.rs/derive_generic_visitor/latest/derive_generic_visitor/)
 
+<!-- start-doc -->
+
 Boilerplate for building visitors, inspired by
 [`derive-visitor`](https://docs.rs/derive-visitor/latest/derive_visitor/).
 
@@ -306,6 +308,13 @@ To illustrate, the typical visit loop would look like, given a `MyVisitor: ListV
 - `<Node as Drive>::drive_inner(ListVisitorWrapper(v))`
 - calls `<MyVisitor as ListVisitor>::visit(v, &x.field)` on each field of `x`
 
-Note: the `visitable_group` interface makes it possible to write composable visitor wrappers
-that provide reusable functionality. For an example, see
+The options available for the `visitable_group` macro are:
+- `visitor(drive_method_name(&[mut]TraitName)[, infaillible])`: derive a visitor trait named `TraitName`.
+  - the presence of `mut` determines whether the `TraitName` visitor will operate on mutable or immutable borrows.
+  - the optional `infaillible` flag enables an infaillible-style interface for the visitor:, where its methods `visit_$ty` return `()` instead of `ControlFlow<_>`.
+- `override_skip(Ty)`: similar to `override(Ty)`, but the default implementation does nothing, and no `enter_Ty` or `exit_Ty` methods are generated.
+- `override(Ty)`, `drive(Ty)` and `skip(Ty)`: behave the same as their counterparts in the `Visit` and `VisitMut` derives.
+
+Note: the `visitable_group` interface makes it possible to write composable
+visitor wrappers that provide reusable functionality. For an example, see
 [`derive_generic_visitor/tests/visitable_group_wrapper.rs`].
