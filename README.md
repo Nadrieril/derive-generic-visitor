@@ -1,7 +1,7 @@
 [![crates.io](https://img.shields.io/crates/v/derive_generic_visitor)](https://crates.io/crates/derive_generic_visitor)
 [![docs.rs](https://img.shields.io/docsrs/derive_generic_visitor/latest)](https://docs.rs/derive_generic_visitor/latest/derive_generic_visitor/)
 
-<!-- start-doc -->
+<!-- cargo-rdme start -->
 
 Boilerplate for building visitors, inspired by
 [`derive-visitor`](https://docs.rs/derive-visitor/latest/derive_visitor/).
@@ -18,7 +18,7 @@ The `Drive`/`DriveMut` derive macros implement these types automatically for a t
 boilerplate out of the way, it becomes easy to define flexible visitors.
 
 The output of the derive macros looks like:
-```ignore
+```rust
 #[derive(Drive)]
 enum MyList {
     Empty,
@@ -26,12 +26,6 @@ enum MyList {
 }
 ```
 ```rust
-# use derive_generic_visitor::{Drive, Visitor, Visit};
-# use std::ops::ControlFlow;
-# enum MyList {
-#     Empty,
-#     Cons(String, Box<MyList>),
-# }
 impl<'s, V> Drive<'s, V> for MyList
 where
     V: Visitor,
@@ -63,7 +57,6 @@ the type's contents, with some work done before or after that call. The `Visit` 
 derive macros make such usage straightforward.
 
 ```rust
-# use derive_generic_visitor::*;
 #[derive(Drive)]
 enum MyList {
     Empty,
@@ -96,22 +89,6 @@ pub fn concat_list(x: &MyList) -> String {
 
 This expands to:
 ```rust
-# use derive_generic_visitor::*;
-# #[derive(Drive)]
-# enum MyList {
-#     Empty,
-#     Cons(MyNode),
-# }
-# #[derive(Drive)]
-# struct MyNode {
-#     val: String,
-#     next: Box<MyList>
-# }
-# impl ConcatVisitor {
-#     fn enter_my_node(&mut self, node: &MyNode) {
-#         self.0 += &node.val;
-#     }
-# }
 #[derive(Default)]
 struct ConcatVisitor(String);
 
@@ -174,7 +151,6 @@ This is a reusable version of the one-off visitor structs we saw in the previous
 visitors can be defined for that same set of types.
 
 ```rust
-# use derive_generic_visitor::*;
 #[derive(Drive)]
 enum List {
     Empty,
@@ -207,17 +183,6 @@ The generated visitor trait has methods much like those from the `Visit[Mut]` de
 be overriden freely. The result is:
 
 ```rust
-# use derive_generic_visitor::*;
-# #[derive(Drive)]
-# enum List {
-#     Empty,
-#     Cons(Node),
-# }
-# #[derive(Drive)]
-# struct Node {
-#     val: String,
-#     next: Box<List>
-# }
 /// Implementation detail: wrapper that implements `Visit[Mut]<T>` for `T: ListVisitable`,
 /// and delegates all the visiting to our trait's `drive[_mut]`. Used in the implementation of
 /// `visit_inner`
@@ -318,3 +283,5 @@ The options available for the `visitable_group` macro are:
 Note: the `visitable_group` interface makes it possible to write composable
 visitor wrappers that provide reusable functionality. For an example, see
 [`derive_generic_visitor/tests/visitable_group_wrapper.rs`].
+
+<!-- cargo-rdme end -->
