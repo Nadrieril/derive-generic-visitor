@@ -40,7 +40,7 @@ mod parse {
         syn::custom_keyword!(visitor);
         syn::custom_keyword!(drive);
         syn::custom_keyword!(skip);
-        syn::custom_keyword!(infaillible);
+        syn::custom_keyword!(infallible);
         syn::custom_keyword!(override_skip);
     }
 
@@ -67,7 +67,7 @@ mod parse {
             ref_tok: Token![&],
             mutability: Option<Token![mut]>,
             trait_name: Ident,
-            infaillible: Option<(Token![,], kw::infaillible)>,
+            infallible: Option<(Token![,], kw::infallible)>,
         },
         /// `drive` and `override` set which types are part of the group and whether the visitor
         /// traits are allowed to override the visiting behavior of those types. The syntax is
@@ -118,7 +118,7 @@ mod parse {
                     ref_tok: content2.parse()?,
                     mutability: content2.parse()?,
                     trait_name: content2.parse()?,
-                    infaillible: if content.peek(Token![,]) {
+                    infallible: if content.peek(Token![,]) {
                         Some((content.parse()?, content.parse()?))
                     } else {
                         None
@@ -142,13 +142,13 @@ mod parse {
                         trait_name,
                         method_name,
                         mutability,
-                        infaillible,
+                        infallible,
                         ..
                     } => options.visitors.push(VisitorDef {
                         vis_trait_name: trait_name,
                         method_name,
                         mutability,
-                        faillible: infaillible.is_none(),
+                        faillible: infallible.is_none(),
                     }),
                     SetVisitableTypes { kind, tys, .. } => {
                         for ty in tys {
@@ -247,7 +247,7 @@ pub fn impl_visitable_group(options: Options, mut item: ItemTrait) -> Result<Tok
 
     // Define a wrapper type that implements `Visit[Mut]` to pass through the `Drive[Mut]` API.
     let wrapper_name = Ident::new(&format!("{trait_name}Wrapper"), Span::call_site());
-    let infaillible_wrapper_name = Ident::new(
+    let infallible_wrapper_name = Ident::new(
         &format!("{trait_name}InfaillibleWrapper"),
         Span::call_site(),
     );
@@ -273,17 +273,17 @@ pub fn impl_visitable_group(options: Options, mut item: ItemTrait) -> Result<Tok
                 type Break = V::Break;
             }
         );
-        let infaillible_wrapper_struct = define_struct(&infaillible_wrapper_name);
-        let any_infaillible_visitor = !visitor_traits.iter().all(|(v, _)| v.faillible);
-        let infaillible_wrapper_visitor = any_infaillible_visitor.then_some(quote!(
-            #infaillible_wrapper_struct
-            impl<V> Visitor for #infaillible_wrapper_name<V> {
+        let infallible_wrapper_struct = define_struct(&infallible_wrapper_name);
+        let any_infallible_visitor = !visitor_traits.iter().all(|(v, _)| v.faillible);
+        let infallible_wrapper_visitor = any_infallible_visitor.then_some(quote!(
+            #infallible_wrapper_struct
+            impl<V> Visitor for #infallible_wrapper_name<V> {
                 type Break = std::convert::Infallible;
             }
         ));
         quote!(
             #wrapper_visitor
-            #infaillible_wrapper_visitor
+            #infallible_wrapper_visitor
         )
     };
     for (vis_def, names) in &visitor_traits {
@@ -297,7 +297,7 @@ pub fn impl_visitable_group(options: Options, mut item: ItemTrait) -> Result<Tok
         let wrapper_name = if *faillible {
             &wrapper_name
         } else {
-            &infaillible_wrapper_name
+            &infallible_wrapper_name
         };
 
         let mut body = quote!(self.0.visit(x));
@@ -339,7 +339,7 @@ pub fn impl_visitable_group(options: Options, mut item: ItemTrait) -> Result<Tok
             let wrapper_name = if *faillible {
                 &wrapper_name
             } else {
-                &infaillible_wrapper_name
+                &infallible_wrapper_name
             };
             let mut body = quote! {x.#drive_inner_method(#wrapper_name::wrap(self))};
             if !*faillible {

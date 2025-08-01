@@ -1,7 +1,7 @@
 use derive_generic_visitor::*;
 
 #[test]
-fn infaillible_visitable_group() {
+fn infallible_visitable_group() {
     #[derive(Drive, DriveMut)]
     struct Id(String);
     #[derive(Drive, DriveMut)]
@@ -19,8 +19,8 @@ fn infaillible_visitable_group() {
     }
 
     #[visitable_group(
-        // Declares an infaillible visitor: its interface hides away `ControlFlow`s.
-        visitor(drive(&AstVisitor), infaillible),
+        // Declares an infallible visitor: its interface hides away `ControlFlow`s.
+        visitor(drive(&AstVisitor), infallible),
         skip(usize, String),
         drive(for<T: AstVisitable> Box<T>),
         override(Pat, Expr),
