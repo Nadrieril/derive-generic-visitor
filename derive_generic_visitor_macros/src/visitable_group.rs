@@ -255,7 +255,7 @@ pub fn impl_visitable_group(options: Options, mut item: ItemTrait) -> Result<Tok
     // Define a wrapper type that implements `Visit[Mut]` to pass through the `Drive[Mut]` API.
     let wrapper_name = Ident::new(&format!("{trait_name}Wrapper"), Span::call_site());
     let infallible_wrapper_name = Ident::new(
-        &format!("{trait_name}InfaillibleWrapper"),
+        &format!("{trait_name}InfallibleWrapper"),
         Span::call_site(),
     );
     let visitor_wrappers = {
