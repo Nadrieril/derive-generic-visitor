@@ -1,6 +1,6 @@
 [package]
 name = "derive_generic_visitor"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 description = "Boilerplate for building rust visitors"
 readme = "../README.md"
@@ -10,7 +10,7 @@ repository.workspace = true
 
 [dependencies]
 derive-visitor = { version = "0.4.0", optional = true }
-derive_generic_visitor_macros = { version = "=0.2.0", path = "../derive_generic_visitor_macros" }
+derive_generic_visitor_macros = { version = "=0.3.0", path = "../derive_generic_visitor_macros" }
 
 [features]
 default = []

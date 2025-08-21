@@ -76,7 +76,7 @@ dependencies = [
 
 [[package]]
 name = "derive_generic_visitor"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "derive-visitor",
  "derive_generic_visitor_macros",
@@ -84,7 +84,7 @@ dependencies = [
 
 [[package]]
 name = "derive_generic_visitor_macros"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "convert_case 0.6.0",
  "darling",
