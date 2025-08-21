@@ -1,6 +1,6 @@
 use proc_macro2::{Span, TokenStream};
 use quote::quote;
-use syn::{parse_quote, Ident, ItemImpl, ItemTrait, Result, Token};
+use syn::{parse_quote, Attribute, Ident, ItemImpl, ItemTrait, Result, Token};
 
 use crate::{GenericTy, Names};
 
@@ -15,6 +15,7 @@ struct VisitorDef {
     method_name: Ident,
     mutability: Option<Token![mut]>,
     faillible: bool,
+    attrs: Vec<Attribute>,
 }
 
 #[derive(Default)]
@@ -28,7 +29,7 @@ mod parse {
         parenthesized,
         parse::{Parse, ParseStream},
         punctuated::Punctuated,
-        token, Ident, Result, Token,
+        token, Attribute, Ident, Result, Token,
     };
 
     use crate::{
@@ -63,6 +64,7 @@ mod parse {
             method_name: Ident,
             #[allow(unused)]
             paren2: token::Paren,
+            attrs: Vec<Attribute>,
             #[allow(unused)]
             ref_tok: Token![&],
             mutability: Option<Token![mut]>,
@@ -115,6 +117,7 @@ mod parse {
                     paren: parenthesized!(content in input),
                     method_name: content.parse()?,
                     paren2: parenthesized!(content2 in content),
+                    attrs: Attribute::parse_outer(&content2)?,
                     ref_tok: content2.parse()?,
                     mutability: content2.parse()?,
                     trait_name: content2.parse()?,
@@ -143,12 +146,14 @@ mod parse {
                         method_name,
                         mutability,
                         infallible,
+                        attrs,
                         ..
                     } => options.visitors.push(VisitorDef {
                         vis_trait_name: trait_name,
                         method_name,
                         mutability,
                         faillible: infallible.is_none(),
+                        attrs,
                     }),
                     SetVisitableTypes { kind, tys, .. } => {
                         for ty in tys {
@@ -197,6 +202,7 @@ pub fn impl_visitable_group(options: Options, mut item: ItemTrait) -> Result<Tok
             method_name,
             mutability,
             faillible,
+            ..
         } = vis_def;
         let return_type = faillible.then_some(quote!(-> #control_flow<V::Break>));
         item.items.push(parse_quote!(
@@ -222,6 +228,7 @@ pub fn impl_visitable_group(options: Options, mut item: ItemTrait) -> Result<Tok
                     method_name,
                     mutability,
                     faillible,
+                    ..
                 } = vis_def;
                 let body = match kind {
                     TyVisitKind::Skip if *faillible => quote!( #control_flow::Continue(()) ),
@@ -248,7 +255,7 @@ pub fn impl_visitable_group(options: Options, mut item: ItemTrait) -> Result<Tok
     // Define a wrapper type that implements `Visit[Mut]` to pass through the `Drive[Mut]` API.
     let wrapper_name = Ident::new(&format!("{trait_name}Wrapper"), Span::call_site());
     let infallible_wrapper_name = Ident::new(
-        &format!("{trait_name}InfaillibleWrapper"),
+        &format!("{trait_name}InfallibleWrapper"),
         Span::call_site(),
     );
     let visitor_wrappers = {
@@ -328,6 +335,7 @@ pub fn impl_visitable_group(options: Options, mut item: ItemTrait) -> Result<Tok
             method_name,
             mutability,
             faillible,
+            attrs,
         } = vis_def;
         let return_type = faillible.then_some(quote!(-> #control_flow<Self::Break>));
         let return_type_val = if *faillible {
@@ -377,6 +385,7 @@ pub fn impl_visitable_group(options: Options, mut item: ItemTrait) -> Result<Tok
             quote!( self.visit(x); self )
         };
         let mut visitor_trait: ItemTrait = parse_quote! {
+            #(#attrs)*
             #vis trait #vis_trait_name: #visitor_constraints Sized where  {
                 /// Visit a visitable type. This calls the appropriate method of this trait on `x`
                 /// (`visit_$ty` if it exists, `visit_inner` if not).
