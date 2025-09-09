@@ -101,11 +101,11 @@ impl<'s, A, B, V: VisitMut<'s, A> + VisitMut<'s, B>> DriveMut<'s, V> for Result<
 
 // Make an impl for an iterable type.
 macro_rules! iter_impl {
-        (<$($param:ident),*> $ty:ty,
+        (<$($param_or_const:ident $($const_ident:ident : $const_ty:ty)?),*> $ty:ty,
             $iter:ident($iter_ty:ty),
             $iter_mut:ident($iter_mut_ty:ty)
         ) => {
-            impl<'s, $($param,)* V> Drive<'s, V> for $ty
+            impl<'s, $($param_or_const $($const_ident : $const_ty)?,)* V> Drive<'s, V> for $ty
             where
                 V: Visitor,
                 V: Visit<'s, $iter_ty>,
@@ -117,7 +117,7 @@ macro_rules! iter_impl {
                     Continue(())
                 }
             }
-            impl<'s, $($param,)* V> DriveMut<'s, V> for $ty
+            impl<'s, $($param_or_const $($const_ident : $const_ty)?,)* V> DriveMut<'s, V> for $ty
             where
                 V: Visitor,
                 V: VisitMut<'s, $iter_mut_ty>,
@@ -133,6 +133,7 @@ macro_rules! iter_impl {
     }
 iter_impl!(<T> Vec<T>, iter(T), iter_mut(T));
 iter_impl!(<T> Option<T>, iter(T), iter_mut(T));
+iter_impl!(<T, const N: usize> [T; N], iter(T), iter_mut(T));
 
 // Make an impl for a type without contents to visit.
 macro_rules! leaf_impl {
