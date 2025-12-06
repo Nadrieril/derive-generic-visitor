@@ -1,6 +1,6 @@
 [package]
 name = "derive_generic_visitor_macros"
-version = "1.0.0"
+version = "1.0.1"
 edition = "2021"
 description = "Macros for `derive_generic_visitor`"
 readme = "../README.md"
