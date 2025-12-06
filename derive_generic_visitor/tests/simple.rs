@@ -97,7 +97,7 @@ fn test_generic_list2() {
     // We don't drive blindly through `Node`: we have a custom visit function, so we don't need
     // `CollectVisitor<T>: Visit<T>`.
     #[visit(Node<T>)]
-    #[visit(drive(List<T>, for<U> Box<U>))]
+    #[visit(drive(List<T>, for<U: Clone> Box<U>))]
     struct CollectVisitor<T: Clone> {
         vec: Vec<T>,
     }

@@ -171,6 +171,7 @@ pub fn impl_visit(input: DeriveInput, mutable: bool) -> Result<TokenStream> {
                         .cloned(),
                 );
                 for param in visit.generics.type_params() {
+                    let param = &param.ident;
                     where_clause.predicates.push(parse_quote!(
                         Self: #visit_trait<#lifetime_param, #param>
                     ));
