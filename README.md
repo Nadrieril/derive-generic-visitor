@@ -190,7 +190,7 @@ struct SomeVisitor;
 impl ListVisitor for SomeVisitor {
     // Here, methods `enter_node`, `exit_node` and `visit_node` are available to override.
     fn enter_node(&mut self, node: &Node) {
-        ...
+        // ...
     }
 }
 ```
