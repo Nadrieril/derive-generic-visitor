@@ -49,53 +49,77 @@ fn infallible_visitable_group() {
     assert!(sum.0 == 42);
 }
 
+/// An arena-based AST where `Expr` is an index into an `ExprKind` arena. The visitor uses
+/// `bounds(HasArena)` so that the generated `AstVisitor` trait requires arena access, enabling a
+/// manual `AstVisitable` impl for `Expr` that resolves indices through the arena.
 #[test]
 fn visitable_group_with_super_bounds() {
     use std::collections::HashMap;
 
-    trait HasEnv {
-        fn env(&self) -> &HashMap<String, usize>;
+    type ExprId = usize;
+
+    #[derive(Clone)]
+    struct Expr(ExprId);
+
+    #[derive(Clone, Drive)]
+    enum ExprKind {
+        Literal(usize),
+        Var(String),
+        Add(Expr, Expr),
     }
 
-    #[derive(Drive, DriveMut)]
-    struct Id(String);
-    #[derive(Drive, DriveMut)]
-    enum Expr {
-        Literal(usize),
-        Var(Id),
+    trait HasArena {
+        fn arena(&self) -> &HashMap<ExprId, ExprKind>;
     }
 
     #[visitable_group(
-        visitor(drive_mut(&mut AstVisitor), infallible, bounds(HasEnv)),
+        visitor(drive(&AstVisitor), infallible, bounds(HasArena)),
         skip(usize, String),
-        override(Expr),
-        override_skip(Id),
+        override(ExprKind),
     )]
     trait AstVisitable {}
 
-    /// Inlines variables found in the environment as literals.
-    struct InlineVars {
-        env: HashMap<String, usize>,
-    }
-    impl HasEnv for InlineVars {
-        fn env(&self) -> &HashMap<String, usize> {
-            &self.env
-        }
-    }
-    impl AstVisitor for InlineVars {
-        fn exit_expr(&mut self, expr: &mut Expr) {
-            if let Expr::Var(Id(name)) = expr {
-                if let Some(&val) = self.env().get(name.as_str()) {
-                    *expr = Expr::Literal(val);
-                }
+    // Manually implement `AstVisitable` for `Expr`: look up the arena to visit the `ExprKind`.
+    impl AstVisitable for Expr {
+        fn drive<V: AstVisitor>(&self, v: &mut V) {
+            if let Some(kind) = v.arena().get(&self.0).cloned() {
+                v.visit(&kind);
             }
         }
     }
 
-    let mut expr = Expr::Var(Id("x".into()));
-    let mut visitor = InlineVars {
-        env: HashMap::from([("x".into(), 42)]),
+    /// Collects all variable names encountered in the AST.
+    struct CollectVars {
+        arena: HashMap<ExprId, ExprKind>,
+        vars: Vec<String>,
+    }
+    impl HasArena for CollectVars {
+        fn arena(&self) -> &HashMap<ExprId, ExprKind> {
+            &self.arena
+        }
+    }
+    impl AstVisitor for CollectVars {
+        fn enter_expr_kind(&mut self, kind: &ExprKind) {
+            if let ExprKind::Var(name) = kind {
+                self.vars.push(name.clone());
+            }
+        }
+    }
+
+    // Build a small arena: `add(x, add(y, 1))`
+    let arena = HashMap::from([
+        (0, ExprKind::Var("x".into())),
+        (1, ExprKind::Var("y".into())),
+        (2, ExprKind::Literal(1)),
+        (3, ExprKind::Add(Expr(1), Expr(2))),
+        (4, ExprKind::Add(Expr(0), Expr(3))),
+    ]);
+
+    let mut visitor = CollectVars {
+        arena: arena,
+        vars: vec![],
     };
-    visitor.visit(&mut expr);
-    assert!(matches!(expr, Expr::Literal(42)));
+    visitor.visit(&Expr(4));
+    visitor.vars.sort();
+    assert_eq!(visitor.vars, vec!["x", "y"]);
 }
