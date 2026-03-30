@@ -16,6 +16,7 @@ struct VisitorDef {
     mutability: Option<Token![mut]>,
     faillible: bool,
     attrs: Vec<Attribute>,
+    super_bounds: Vec<syn::TypeParamBound>,
 }
 
 #[derive(Default)]
@@ -43,6 +44,37 @@ mod parse {
         syn::custom_keyword!(skip);
         syn::custom_keyword!(infallible);
         syn::custom_keyword!(override_skip);
+        syn::custom_keyword!(bounds);
+    }
+
+    /// Optional settings that follow the main `visitor(method_name(&[mut] TraitName), ...)` args.
+    enum VisitorOpt {
+        Infallible(#[allow(unused)] kw::infallible),
+        Bounds {
+            #[allow(unused)]
+            kw: kw::bounds,
+            #[allow(unused)]
+            paren: token::Paren,
+            bounds: Punctuated<syn::TypeParamBound, Token![+]>,
+        },
+    }
+
+    impl Parse for VisitorOpt {
+        fn parse(input: ParseStream) -> Result<Self> {
+            let lookahead = input.lookahead1();
+            if lookahead.peek(kw::infallible) {
+                Ok(VisitorOpt::Infallible(input.parse()?))
+            } else if lookahead.peek(kw::bounds) {
+                let content;
+                Ok(VisitorOpt::Bounds {
+                    kw: input.parse()?,
+                    paren: parenthesized!(content in input),
+                    bounds: Punctuated::parse_terminated(&content)?,
+                })
+            } else {
+                Err(lookahead.error())
+            }
+        }
     }
 
     #[allow(unused)]
@@ -69,7 +101,7 @@ mod parse {
             ref_tok: Token![&],
             mutability: Option<Token![mut]>,
             trait_name: Ident,
-            infallible: Option<(Token![,], kw::infallible)>,
+            opts: Punctuated<VisitorOpt, Token![,]>,
         },
         /// `drive` and `override` set which types are part of the group and whether the visitor
         /// traits are allowed to override the visiting behavior of those types. The syntax is
@@ -121,10 +153,11 @@ mod parse {
                     ref_tok: content2.parse()?,
                     mutability: content2.parse()?,
                     trait_name: content2.parse()?,
-                    infallible: if content.peek(Token![,]) {
-                        Some((content.parse()?, content.parse()?))
+                    opts: if content.peek(Token![,]) {
+                        let _: Token![,] = content.parse()?;
+                        Punctuated::parse_terminated(&content)?
                     } else {
-                        None
+                        Punctuated::new()
                     },
                 }
             } else {
@@ -145,16 +178,29 @@ mod parse {
                         trait_name,
                         method_name,
                         mutability,
-                        infallible,
                         attrs,
+                        opts,
                         ..
-                    } => options.visitors.push(VisitorDef {
-                        vis_trait_name: trait_name,
-                        method_name,
-                        mutability,
-                        faillible: infallible.is_none(),
-                        attrs,
-                    }),
+                    } => {
+                        let mut faillible = true;
+                        let mut super_bounds = vec![];
+                        for opt in opts {
+                            match opt {
+                                VisitorOpt::Infallible(_) => faillible = false,
+                                VisitorOpt::Bounds { bounds, .. } => {
+                                    super_bounds.extend(bounds);
+                                }
+                            }
+                        }
+                        options.visitors.push(VisitorDef {
+                            vis_trait_name: trait_name,
+                            method_name,
+                            mutability,
+                            faillible,
+                            attrs,
+                            super_bounds,
+                        });
+                    }
                     SetVisitableTypes { kind, tys, .. } => {
                         for ty in tys {
                             let kind = match kind {
@@ -254,10 +300,8 @@ pub fn impl_visitable_group(options: Options, mut item: ItemTrait) -> Result<Tok
 
     // Define a wrapper type that implements `Visit[Mut]` to pass through the `Drive[Mut]` API.
     let wrapper_name = Ident::new(&format!("{trait_name}Wrapper"), Span::call_site());
-    let infallible_wrapper_name = Ident::new(
-        &format!("{trait_name}InfallibleWrapper"),
-        Span::call_site(),
-    );
+    let infallible_wrapper_name =
+        Ident::new(&format!("{trait_name}InfallibleWrapper"), Span::call_site());
     let visitor_wrappers = {
         let define_struct = |wrapper_name: &Ident| {
             quote!(
@@ -336,6 +380,7 @@ pub fn impl_visitable_group(options: Options, mut item: ItemTrait) -> Result<Tok
             mutability,
             faillible,
             attrs,
+            super_bounds,
         } = vis_def;
         let return_type = faillible.then_some(quote!(-> #control_flow<Self::Break>));
         let return_type_val = if *faillible {
@@ -367,7 +412,10 @@ pub fn impl_visitable_group(options: Options, mut item: ItemTrait) -> Result<Tok
                 }
             }
         };
-        let visitor_constraints = faillible.then_some(quote!(Visitor+));
+        let visitor_constraints = faillible
+            .then_some(quote!(Visitor))
+            .into_iter()
+            .chain(super_bounds.iter().map(|b| quote!(#b)));
         let visit_by_val_infallible = faillible.then_some(quote!(
             /// Convenience when the visitor does not return early.
             fn visit_by_val_infallible<T: #trait_name>(self, x: & #mutability T) -> Self
@@ -386,7 +434,7 @@ pub fn impl_visitable_group(options: Options, mut item: ItemTrait) -> Result<Tok
         };
         let mut visitor_trait: ItemTrait = parse_quote! {
             #(#attrs)*
-            #vis trait #vis_trait_name: #visitor_constraints Sized where  {
+            #vis trait #vis_trait_name: #(#visitor_constraints + )* Sized where  {
                 /// Visit a visitable type. This calls the appropriate method of this trait on `x`
                 /// (`visit_$ty` if it exists, `visit_inner` if not).
                 fn visit<'a, T: #trait_name>(&'a mut self, x: & #mutability T)

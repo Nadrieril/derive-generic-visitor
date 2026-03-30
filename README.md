@@ -290,9 +290,10 @@ To illustrate, the typical visit loop would look like, given a `MyVisitor: ListV
 - calls `<MyVisitor as ListVisitor>::visit(v, &x.field)` on each field of `x`, completing the loop.
 
 The options available for the `visitable_group` macro are:
-- `visitor(drive_method_name(&[mut]TraitName)[, infallible])`: derive a visitor trait named `TraitName`.
+- `visitor(drive_method_name(&[mut]TraitName)[, infallible][, bounds(Bound1 + Bound2)])`: derive a visitor trait named `TraitName`.
   - the presence of `mut` determines whether the `TraitName` visitor will operate on mutable or immutable borrows.
-  - the optional `infallible` flag enables an infallible-style interface for the visitor:, where its methods `visit_$ty` return `()` instead of `ControlFlow<_>`.
+  - the optional `infallible` flag enables an infallible-style interface for the visitor, where its methods `visit_$ty` return `()` instead of `ControlFlow<_>`.
+  - the optional `bounds(...)` adds super trait bounds to the generated `TraitName` trait.
 - `drive(Ty)` and `skip(Ty)`: behave the same as their counterparts in the `Visit` and `VisitMut`
     derives described above.
 - `override(Ty)`: generates `enter_ty` and `exit_ty` methods that do nothing, and a `visit_ty`
