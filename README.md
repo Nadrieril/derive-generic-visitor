@@ -290,8 +290,10 @@ To illustrate, the typical visit loop would look like, given a `MyVisitor: ListV
 - calls `<MyVisitor as ListVisitor>::visit(v, &x.field)` on each field of `x`, completing the loop.
 
 The options available for the `visitable_group` macro are:
-- `visitor(drive_method_name(&[mut]TraitName)[, infallible][, bounds(Bound1 + Bound2)])`: derive a visitor trait named `TraitName`.
+- `visitor(drive_method_name(&[mut|two]TraitName)[, infallible][, bounds(Bound1 + Bound2)])`: derive a visitor trait named `TraitName`.
   - the presence of `mut` determines whether the `TraitName` visitor will operate on mutable or immutable borrows.
+  - the presence of `two` determines whether the `TraitName` visitor will operate on a single
+      value or two values at once (see Lockstep section). Lockstep visitors don't support mutability.
   - the optional `infallible` flag enables an infallible-style interface for the visitor, where its methods `visit_$ty` return `()` instead of `ControlFlow<_>`.
   - the optional `bounds(...)` adds super trait bounds to the generated `TraitName` trait.
 - `drive(Ty)` and `skip(Ty)`: behave the same as their counterparts in the `Visit` and `VisitMut`
@@ -303,5 +305,19 @@ The options available for the `visitable_group` macro are:
 Note: the `visitable_group` interface makes it possible to write composable
 visitor wrappers that provide reusable functionality. For an example, see
 [`derive_generic_visitor/tests/visitable_group_wrapper.rs`].
+
+## Lockstep (zip) visitors
+
+So far we've seen visitors that visit a single value. This crate also supports "zipping" or
+"lockstep" visitors that visit two values of the same type at the same time, stopping early if
+they don't match. This can be useful to define custom comparison functions.
+
+The structure matches what we've seen so far: `DriveTwo` represents a type that can be
+lockstep-visited, and `VisitTwo` represents the corresponding visitors. Both can be derived,
+and support the same option as their normal counterparts. There is no mutable version of this
+visitor, under the assumption that it's not as useful.
+
+Lockstep visitors are supported by the `visitable_group` macro by writing `&two TraitName`
+where you would write `&TraitName`/`&mut TraitName`.
 
 <!-- cargo-rdme end -->

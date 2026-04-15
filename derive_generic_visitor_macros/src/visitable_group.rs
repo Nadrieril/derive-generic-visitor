@@ -14,6 +14,7 @@ struct VisitorDef {
     vis_trait_name: Ident,
     method_name: Ident,
     mutability: Option<Token![mut]>,
+    is_two: bool,
     faillible: bool,
     attrs: Vec<Attribute>,
     super_bounds: Vec<syn::TypeParamBound>,
@@ -45,9 +46,10 @@ mod parse {
         syn::custom_keyword!(infallible);
         syn::custom_keyword!(override_skip);
         syn::custom_keyword!(bounds);
+        syn::custom_keyword!(two);
     }
 
-    /// Optional settings that follow the main `visitor(method_name(&[mut] TraitName), ...)` args.
+    /// Optional settings that follow the main `visitor(method_name(&[mut|two] TraitName), ...)` args.
     enum VisitorOpt {
         Infallible(#[allow(unused)] kw::infallible),
         Bounds {
@@ -86,7 +88,7 @@ mod parse {
     }
 
     enum MacroArg {
-        /// `visitor(method_name(&[mut] trait_name))` sets the name of the visitor trait we will
+        /// `visitor(method_name(&[mut|two] trait_name))` sets the name of the visitor trait we will
         /// defer to for visiting.
         SetVisitorTrait {
             #[allow(unused)]
@@ -99,6 +101,7 @@ mod parse {
             attrs: Vec<Attribute>,
             #[allow(unused)]
             ref_tok: Token![&],
+            two: Option<kw::two>,
             mutability: Option<Token![mut]>,
             trait_name: Ident,
             opts: Punctuated<VisitorOpt, Token![,]>,
@@ -144,6 +147,7 @@ mod parse {
                     tys: Punctuated::parse_terminated(&content)?,
                 }
             } else if lookahead.peek(kw::visitor) {
+                let two;
                 MacroArg::SetVisitorTrait {
                     vis_tok: input.parse()?,
                     paren: parenthesized!(content in input),
@@ -151,7 +155,19 @@ mod parse {
                     paren2: parenthesized!(content2 in content),
                     attrs: Attribute::parse_outer(&content2)?,
                     ref_tok: content2.parse()?,
-                    mutability: content2.parse()?,
+                    two: {
+                        two = if content2.peek(kw::two) {
+                            Some(content2.parse()?)
+                        } else {
+                            None
+                        };
+                        two
+                    },
+                    mutability: if two.is_some() {
+                        None
+                    } else {
+                        content2.parse()?
+                    },
                     trait_name: content2.parse()?,
                     opts: if content.peek(Token![,]) {
                         let _: Token![,] = content.parse()?;
@@ -178,6 +194,7 @@ mod parse {
                         trait_name,
                         method_name,
                         mutability,
+                        two,
                         attrs,
                         opts,
                         ..
@@ -196,6 +213,7 @@ mod parse {
                             vis_trait_name: trait_name,
                             method_name,
                             mutability,
+                            is_two: two.is_some(),
                             faillible,
                             attrs,
                             super_bounds,
@@ -235,7 +253,11 @@ pub fn impl_visitable_group(options: Options, mut item: ItemTrait) -> Result<Tok
         .visitors
         .into_iter()
         .map(|vdef| {
-            let names = Names::new(vdef.mutability.is_some());
+            let names = if vdef.is_two {
+                Names::new_two()
+            } else {
+                Names::new(vdef.mutability.is_some())
+            };
             (vdef, names)
         })
         .collect();
@@ -247,14 +269,16 @@ pub fn impl_visitable_group(options: Options, mut item: ItemTrait) -> Result<Tok
             vis_trait_name,
             method_name,
             mutability,
+            is_two,
             faillible,
             ..
         } = vis_def;
         let return_type = faillible.then_some(quote!(-> #control_flow<V::Break>));
+        let other_param = is_two.then(|| quote!(, other: &Self));
         item.items.push(parse_quote!(
             /// Recursively visit this type with the provided visitor. This calls the visitor's `visit_$any`
             /// method if it exists, otherwise `visit_inner`.
-            fn #method_name<V: #vis_trait_name>(& #mutability self, v: &mut V) #return_type;
+            fn #method_name<V: #vis_trait_name>(& #mutability self #other_param, v: &mut V) #return_type;
         ));
     }
 
@@ -273,21 +297,24 @@ pub fn impl_visitable_group(options: Options, mut item: ItemTrait) -> Result<Tok
                     vis_trait_name,
                     method_name,
                     mutability,
+                    is_two,
                     faillible,
                     ..
                 } = vis_def;
+                let other_param = is_two.then(|| quote!(, other: &Self));
+                let other_arg = is_two.then(|| quote!(, other));
+                let return_type = faillible.then_some(quote!(-> #control_flow<V::Break>));
                 let body = match kind {
                     TyVisitKind::Skip if *faillible => quote!( #control_flow::Continue(()) ),
                     TyVisitKind::Skip => quote!(),
-                    TyVisitKind::Drive => quote!(v.visit_inner(self)),
+                    TyVisitKind::Drive => quote!(v.visit_inner(self #other_arg)),
                     TyVisitKind::Override { name, .. } => {
                         let method = Ident::new(&format!("visit_{name}"), Span::call_site());
-                        quote!( v.#method(self) )
+                        quote!( v.#method(self #other_arg) )
                     }
                 };
-                let return_type = faillible.then_some(quote!(-> #control_flow<V::Break>));
                 timpl.items.push(parse_quote!(
-                    fn #method_name<V: #vis_trait_name>(& #mutability self, v: &mut V)
+                    fn #method_name<V: #vis_trait_name>(& #mutability self #other_param, v: &mut V)
                         #return_type
                     {
                         #body
@@ -342,6 +369,7 @@ pub fn impl_visitable_group(options: Options, mut item: ItemTrait) -> Result<Tok
         let VisitorDef {
             vis_trait_name,
             mutability,
+            is_two,
             faillible,
             ..
         } = vis_def;
@@ -351,18 +379,19 @@ pub fn impl_visitable_group(options: Options, mut item: ItemTrait) -> Result<Tok
             &infallible_wrapper_name
         };
 
-        let mut body = quote!(self.0.visit(x));
+        let y_param = is_two.then(|| quote!(, y: &'s T));
+        let y_arg = is_two.then(|| quote!(, y));
+        let mut body = quote!(self.0.visit(x #y_arg));
         if !faillible {
             body = quote!(Continue(#body));
         }
-
         impls.push(parse_quote!(
             impl<'s, V: #vis_trait_name, T: #trait_name> #visit_trait<'s, T> for #wrapper_name<V> {
-                fn visit(&mut self, x: &'s #mutability T) -> #control_flow<Self::Break> {
+                fn visit(&mut self, x: &'s #mutability T #y_param) -> #control_flow<Self::Break> {
                     #body
                 }
             }
-        ))
+        ));
     }
 
     // Define the visitor trait(s).
@@ -378,6 +407,7 @@ pub fn impl_visitable_group(options: Options, mut item: ItemTrait) -> Result<Tok
             vis_trait_name,
             method_name,
             mutability,
+            is_two,
             faillible,
             attrs,
             super_bounds,
@@ -388,13 +418,17 @@ pub fn impl_visitable_group(options: Options, mut item: ItemTrait) -> Result<Tok
         } else {
             quote!(-> Self)
         };
+
+        // Generate `visit_inner`.
+        let y_param_t = is_two.then(|| quote!(, y: &T));
+        let y_arg_t_comma = is_two.then(|| quote!(y,));
         let visit_inner = {
             let wrapper_name = if *faillible {
                 &wrapper_name
             } else {
                 &infallible_wrapper_name
             };
-            let mut body = quote! {x.#drive_inner_method(#wrapper_name::wrap(self))};
+            let mut body = quote! {x.#drive_inner_method(#y_arg_t_comma #wrapper_name::wrap(self))};
             if !*faillible {
                 body = quote!(match #body {
                     #control_flow::Continue(x) => x,
@@ -403,63 +437,84 @@ pub fn impl_visitable_group(options: Options, mut item: ItemTrait) -> Result<Tok
             quote! {
                 /// Visit the contents of `x`. This calls `self.visit()` on each field of `T`. This
                 /// is available for any type whose contents are all `#trait_name`.
-                fn visit_inner<T>(&mut self, x: & #mutability T) #return_type
+                fn visit_inner<T>(&mut self, x: & #mutability T #y_param_t) #return_type
                 where
-                T: #trait_name,
-                T: for<'s> #drive_trait<'s, #wrapper_name<Self>>,
+                    T: #trait_name,
+                    T: for<'s> #drive_trait<'s, #wrapper_name<Self>>,
                 {
                     #body
                 }
             }
         };
-        let visitor_constraints = faillible
-            .then_some(quote!(Visitor))
-            .into_iter()
-            .chain(super_bounds.iter().map(|b| quote!(#b)));
-        let visit_by_val_infallible = faillible.then_some(quote!(
-            /// Convenience when the visitor does not return early.
-            fn visit_by_val_infallible<T: #trait_name>(self, x: & #mutability T) -> Self
-            where
-                Self: #the_visitor_trait<Break=::std::convert::Infallible> + Sized,
+
+        // Visitor trait supertrait constraints.
+        let visitor_constraints = if *is_two {
+            // VisitTwo requires Break: Default.
+            Some(quote!(Visitor<Break: Default>))
+        } else {
+            faillible.then_some(quote!(Visitor))
+        }
+        .into_iter()
+        .chain(super_bounds.iter().map(|b| quote!(#b)));
+
+        // Generate `visit`, `visit_by_val`, and optionally `visit_by_val_infallible`.
+        let y_param_vis = is_two.then(|| quote!(, y: & #mutability T));
+        let y_arg_vis = is_two.then(|| quote!(, y));
+        let y_arg_vis_comma = is_two.then(|| quote!(y,));
+        let visit_method = quote! {
+            /// Visit a visitable type. This calls the appropriate method of this trait on `x`
+            /// (`visit_$ty` if it exists, `visit_inner` if not).
+            fn visit<'a, T: #trait_name>(&'a mut self, x: & #mutability T #y_param_vis)
+                #return_type
             {
-                match self.visit_by_val(x) {
-                    #control_flow::Continue(x) => x,
-                }
+                x.#method_name(#y_arg_vis_comma self)
             }
-        ));
+        };
         let visit_by_val_body = if *faillible {
-            quote!(self.visit(x).map_continue(|()| self))
+            quote!(self.visit(x #y_arg_vis).map_continue(|()| self))
         } else {
             quote!( self.visit(x); self )
         };
+        let visit_by_val_method = quote! {
+            /// Convenience alias for method chaining.
+            fn visit_by_val<T: #trait_name>(mut self, x: & #mutability T #y_param_vis)
+                #return_type_val
+            {
+                #visit_by_val_body
+            }
+        };
+        let visit_by_val_infallible = if *faillible && !*is_two {
+            Some(quote!(
+                /// Convenience when the visitor does not return early.
+                fn visit_by_val_infallible<T: #trait_name>(self, x: & #mutability T) -> Self
+                where
+                    Self: #the_visitor_trait<Break=::std::convert::Infallible> + Sized,
+                {
+                    match self.visit_by_val(x) {
+                        #control_flow::Continue(x) => x,
+                    }
+                }
+            ))
+        } else {
+            None
+        };
+
         let mut visitor_trait: ItemTrait = parse_quote! {
             #(#attrs)*
             #vis trait #vis_trait_name: #(#visitor_constraints + )* Sized where  {
-                /// Visit a visitable type. This calls the appropriate method of this trait on `x`
-                /// (`visit_$ty` if it exists, `visit_inner` if not).
-                fn visit<'a, T: #trait_name>(&'a mut self, x: & #mutability T)
-                    #return_type
-                {
-                    x.#method_name(self)
-                }
-
-                /// Convenience alias for method chaining.
-                fn visit_by_val<T: #trait_name>(mut self, x: & #mutability T)
-                    #return_type_val
-                {
-                    #visit_by_val_body
-                }
-
+                #visit_method
+                #visit_by_val_method
                 #visit_by_val_infallible
                 #visit_inner
             }
         };
+
         // Add the overrideable methods.
         for (ty, kind) in &options.tys {
             let TyVisitKind::Override { name, skip } = kind else {
                 continue;
             };
-            let visit_method = Ident::new(&format!("visit_{name}"), Span::call_site());
+            let visit_method_name = Ident::new(&format!("visit_{name}"), Span::call_site());
             let enter_method = Ident::new(&format!("enter_{name}"), Span::call_site());
             let exit_method = Ident::new(&format!("exit_{name}"), Span::call_site());
             let (impl_generics, _, where_clause) = ty.generics.split_for_impl();
@@ -467,10 +522,13 @@ pub fn impl_visitable_group(options: Options, mut item: ItemTrait) -> Result<Tok
             let question_mark = faillible.then_some(quote!(?));
             let return_type = faillible.then_some(quote!(-> #control_flow<Self::Break>));
             let return_value = faillible.then_some(quote!(Continue(())));
+            let y_param_ty = is_two.then(|| quote!(, y: &#ty));
+            let y_arg = is_two.then(|| quote!(, y));
+
             let body = (!skip).then_some(quote! {
-                    self.#enter_method(x);
-                    self.visit_inner(x)#question_mark;
-                    self.#exit_method(x);
+                self.#enter_method(x #y_arg);
+                self.visit_inner(x #y_arg)#question_mark;
+                self.#exit_method(x #y_arg);
             });
             visitor_trait.items.push(parse_quote!(
                 /// Overrideable method called when visiting a `$ty`. When overriding this method,
@@ -478,22 +536,24 @@ pub fn impl_visitable_group(options: Options, mut item: ItemTrait) -> Result<Tok
                 /// it if the contents of `x` should not be visited.
                 ///
                 /// The default implementation calls `enter_$ty` then `visit_inner` then `exit_$ty`.
-                fn #visit_method #impl_generics(&mut self, x: &#mutability #ty)
+                fn #visit_method_name #impl_generics(&mut self, x: &#mutability #ty #y_param_ty)
                     #return_type
                 #where_clause
                 {
-                       #body
-                       #return_value
+                    #body
+                    #return_value
                 }
             ));
             if !skip {
                 visitor_trait.items.push(parse_quote!(
                     /// Called when starting to visit a `$ty` (unless `visit_$ty` is overriden).
-                    fn #enter_method #impl_generics(&mut self, x: &#mutability #ty) #where_clause {}
+                    fn #enter_method #impl_generics(&mut self, x: &#mutability #ty #y_param_ty)
+                        #where_clause {}
                 ));
                 visitor_trait.items.push(parse_quote!(
                     /// Called when finished visiting a `$ty` (unless `visit_$ty` is overriden).
-                    fn #exit_method #impl_generics(&mut self, x: &#mutability #ty) #where_clause {}
+                    fn #exit_method #impl_generics(&mut self, x: &#mutability #ty #y_param_ty)
+                        #where_clause {}
                 ));
             }
         }

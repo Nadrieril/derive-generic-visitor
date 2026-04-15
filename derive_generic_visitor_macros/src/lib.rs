@@ -44,6 +44,16 @@ pub fn derive_drive_mut(input: proc_macro::TokenStream) -> proc_macro::TokenStre
     wrap_for_derive(input, |input| drive::impl_drive(input, true))
 }
 
+#[proc_macro_derive(DriveTwo, attributes(drive))]
+pub fn derive_drive_two(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    wrap_for_derive(input, |input| drive::impl_drive_two(input))
+}
+
+#[proc_macro_derive(VisitTwo, attributes(visit_two))]
+pub fn derive_visit_two(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    wrap_for_derive(input, |input| visit::impl_visit_two(input))
+}
+
 #[proc_macro_attribute]
 pub fn visitable_group(
     attrs: proc_macro::TokenStream,

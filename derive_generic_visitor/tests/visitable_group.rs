@@ -123,3 +123,104 @@ fn visitable_group_with_super_bounds() {
     visitor.vars.sort();
     assert_eq!(visitor.vars, vec!["x", "y"]);
 }
+
+/// Test the `&two` visitor mode for lockstep visiting via `visitable_group`.
+#[test]
+fn visitable_group_two() {
+    #[derive(Drive, DriveTwo)]
+    enum Expr {
+        Literal(usize),
+        Add(Box<Expr>, Box<Expr>),
+    }
+
+    #[visitable_group(
+        visitor(drive_expr_two(&two ExprTwoVisitor)),
+        skip(usize),
+        drive(for<T: ExprVisitable> Box<T>),
+        override(Expr),
+    )]
+    trait ExprVisitable {}
+
+    struct PairCollector {
+        pairs: Vec<(usize, usize)>,
+    }
+    impl Visitor for PairCollector {
+        type Break = ();
+    }
+    impl ExprTwoVisitor for PairCollector {
+        fn enter_expr(&mut self, a: &Expr, b: &Expr) {
+            if let (Expr::Literal(x), Expr::Literal(y)) = (a, b) {
+                self.pairs.push((*x, *y));
+            }
+        }
+    }
+
+    let a = Expr::Add(Box::new(Expr::Literal(1)), Box::new(Expr::Literal(2)));
+    let b = Expr::Add(Box::new(Expr::Literal(10)), Box::new(Expr::Literal(20)));
+
+    let mut collector = PairCollector { pairs: vec![] };
+    let _ = collector.visit(&a, &b);
+    assert_eq!(collector.pairs, vec![(1, 10), (2, 20)]);
+
+    // --- Two-visitor: variant mismatch breaks early ---
+    let c = Expr::Literal(99);
+    let collector = PairCollector { pairs: vec![] };
+    let result = collector.visit_by_val(&a, &c);
+    assert!(result.is_break());
+}
+
+/// Test `&two` visitor with `override_skip`.
+#[test]
+fn visitable_group_two_override_skip() {
+    #[derive(Drive, DriveTwo)]
+    struct Wrapper {
+        val: u64,
+        label: String,
+    }
+
+    #[visitable_group(
+        visitor(drive_two(&two WrapperTwoVisitor)),
+        skip(u64),
+        override_skip(String),
+        override(Wrapper),
+    )]
+    trait WrapperVisitable {}
+
+    struct EqChecker {
+        called: bool,
+    }
+    impl Visitor for EqChecker {
+        type Break = ();
+    }
+    impl WrapperTwoVisitor for EqChecker {
+        fn visit_wrapper(&mut self, a: &Wrapper, b: &Wrapper) -> ControlFlow<()> {
+            self.called = true;
+            // Only compare vals, ignore labels.
+            if a.val != b.val {
+                Break(())
+            } else {
+                Continue(())
+            }
+        }
+    }
+
+    let a = Wrapper {
+        val: 42,
+        label: "hello".into(),
+    };
+    let b = Wrapper {
+        val: 42,
+        label: "world".into(),
+    };
+    let mut v = EqChecker { called: false };
+    assert!(v.visit(&a, &b).is_continue());
+    assert!(v.called);
+
+    let c = Wrapper {
+        val: 99,
+        label: "hello".into(),
+    };
+    let mut v = EqChecker { called: false };
+    assert!(v.visit(&a, &c).is_break());
+    assert!(v.called);
+}

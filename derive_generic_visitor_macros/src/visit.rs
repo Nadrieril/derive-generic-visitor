@@ -1,6 +1,6 @@
 use proc_macro2::{Span, TokenStream};
 use quote::quote;
-use syn::{parse_quote, DeriveInput, GenericParam, Generics, Ident, Result, Type};
+use syn::{parse_quote, DeriveInput, GenericParam, Generics, Ident, Path, Result, Type};
 
 use crate::Names;
 
@@ -18,7 +18,7 @@ enum VisitKind {
 }
 
 /// The data of a particular implementation of `Visit[Mut]` we want to generate.
-struct Visit {
+struct VisitEntry {
     generics: Generics,
     ty: Type,
     kind: VisitKind,
@@ -30,7 +30,7 @@ mod parse {
     use syn::token::{self};
     use syn::{parenthesized, Attribute, Result, Token};
 
-    use super::{Visit, VisitKind};
+    use super::{VisitEntry, VisitKind};
     use crate::common::NamedGenericTy;
 
     mod kw {
@@ -98,10 +98,10 @@ mod parse {
         }
     }
 
-    pub fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<super::Visit>> {
+    pub fn parse_attrs(attrs: &[Attribute], attr_name: &str) -> Result<Vec<super::VisitEntry>> {
         let mut out = Vec::new();
         for attr in attrs {
-            if !attr.path().is_ident("visit") {
+            if !attr.path().is_ident(attr_name) {
                 continue;
             }
             let visit_options: VisitOptions = attr.parse_args()?;
@@ -119,7 +119,7 @@ mod parse {
                         },
                         None => VisitKind::Override(named_ty.get_name()?),
                     };
-                    out.push(Visit {
+                    out.push(VisitEntry {
                         kind,
                         ty: named_ty.ty.ty,
                         generics: named_ty.ty.generics,
@@ -144,7 +144,7 @@ pub fn impl_visit(input: DeriveInput, mutable: bool) -> Result<TokenStream> {
         ..
     } = &names;
 
-    let visit_options: Vec<Visit> = parse::parse_attrs(&input.attrs)?;
+    let visit_options: Vec<VisitEntry> = parse::parse_attrs(&input.attrs, "visit")?;
 
     let name = input.ident;
     let (_, ty_generics, _) = input.generics.split_for_impl();
@@ -207,6 +207,88 @@ pub fn impl_visit(input: DeriveInput, mutable: bool) -> Result<TokenStream> {
                     #where_clause
                 {
                     fn visit(&mut self, x: &#lifetime_param #mut_modifier #ty)
+                        -> #control_flow<Self::Break> {
+                        #body
+                        #control_flow::Continue(())
+                    }
+                }
+            }
+        })
+        .collect();
+    Ok(visit_impls)
+}
+
+pub fn impl_visit_two(input: DeriveInput) -> Result<TokenStream> {
+    use VisitKind::*;
+    let crate_path: Path = parse_quote! { ::derive_generic_visitor };
+    let visit_two_trait: Path = parse_quote!( #crate_path::VisitTwo );
+    let drive_two_trait: Path = parse_quote!( #crate_path::DriveTwo );
+    let control_flow: Path = parse_quote!(::std::ops::ControlFlow);
+    let lifetime_param: syn::Lifetime = parse_quote!('s);
+
+    let visit_options: Vec<VisitEntry> = parse::parse_attrs(&input.attrs, "visit_two")?;
+
+    let name = input.ident;
+    let (_, ty_generics, _) = input.generics.split_for_impl();
+    let impl_subject = quote! { #name #ty_generics };
+
+    let visit_impls: TokenStream = visit_options
+        .iter()
+        .map(|visit| {
+            let generics = {
+                let mut generics = input.generics.clone();
+                generics
+                    .params
+                    .push(GenericParam::Lifetime(parse_quote!(#lifetime_param)));
+                generics
+                    .params
+                    .extend(visit.generics.params.iter().cloned());
+                let where_clause = generics.make_where_clause();
+                where_clause.predicates.extend(
+                    visit
+                        .generics
+                        .where_clause
+                        .iter()
+                        .flat_map(|cl| &cl.predicates)
+                        .cloned(),
+                );
+                for param in visit.generics.type_params() {
+                    let param = &param.ident;
+                    where_clause.predicates.push(parse_quote!(
+                        Self: #visit_two_trait<#lifetime_param, #param>
+                    ));
+                }
+                generics
+            };
+
+            let ty = &visit.ty;
+            let drive_two_inner = quote!(
+                <#ty as #drive_two_trait<'_, Self>>::drive_two_inner(x, y, self)?;
+            );
+            let body = match &visit.kind {
+                Skip => quote!(),
+                Drive => drive_two_inner,
+                Enter(name) => {
+                    let method = Ident::new(&format!("enter_{name}"), Span::call_site());
+                    quote!( self.#method(x, y); #drive_two_inner )
+                }
+                Exit(name) => {
+                    let method = Ident::new(&format!("exit_{name}"), Span::call_site());
+                    quote!( #drive_two_inner self.#method(x, y); )
+                }
+                Override(name) => {
+                    let method = Ident::new(&format!("visit_{name}"), Span::call_site());
+                    quote!( self.#method(x, y)?; )
+                }
+            };
+            let (impl_generics, _, where_clause) = generics.split_for_impl();
+            quote! {
+                impl #impl_generics
+                    #visit_two_trait<#lifetime_param, #ty>
+                    for #impl_subject
+                    #where_clause
+                {
+                    fn visit(&mut self, x: &#lifetime_param #ty, y: &#lifetime_param #ty)
                         -> #control_flow<Self::Break> {
                         #body
                         #control_flow::Continue(())

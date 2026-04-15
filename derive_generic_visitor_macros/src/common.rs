@@ -44,6 +44,20 @@ impl Names {
             mut_modifier: mutable.then(Default::default),
         }
     }
+
+    pub fn new_two() -> Names {
+        let crate_path: Path = parse_quote! { ::derive_generic_visitor };
+        Names {
+            control_flow: parse_quote!(::std::ops::ControlFlow),
+            visitor_trait: parse_quote!( #crate_path::Visitor ),
+            visit_trait: parse_quote!( #crate_path::VisitTwo ),
+            drive_trait: parse_quote!( #crate_path::DriveTwo ),
+            drive_inner_method: parse_quote!(drive_two_inner),
+            visitor_param: parse_quote!(V),
+            lifetime_param: parse_quote!('s),
+            mut_modifier: None,
+        }
+    }
 }
 
 /// A type, optionally prefixed with `for<A, B, C: Trait>` generics.
