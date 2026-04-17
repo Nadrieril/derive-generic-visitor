@@ -229,3 +229,5 @@ macro_rules! leaf_impl {
 leaf_impl!(bool, char, u8, u16, u32, u64, u128, usize);
 leaf_impl!(i8, i16, i32, i64, i128, isize);
 leaf_impl!((), String);
+#[cfg(feature = "extra_impls")]
+leaf_impl!(ustr::Ustr);

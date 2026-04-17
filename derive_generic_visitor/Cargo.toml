@@ -12,8 +12,10 @@ repository.workspace = true
 derive-visitor = { version = "0.4.0", optional = true }
 derive_generic_visitor_macros = { version = "=1.0.1", path = "../derive_generic_visitor_macros" }
 itertools = "0.14.0"
+ustr = { version = "1.1.0", optional = true }
 
 [features]
 default = []
 # Enables compatibility layer with the `derive-visitor` crate.
 dynamic = ["dep:derive-visitor"]
+extra_impls = ["dep:ustr"]
