@@ -314,6 +314,7 @@ pub fn impl_visitable_group(options: Options, mut item: ItemTrait) -> Result<Tok
                     }
                 };
                 timpl.items.push(parse_quote!(
+                    #[inline]
                     fn #method_name<V: #vis_trait_name>(& #mutability self #other_param, v: &mut V)
                         #return_type
                     {
@@ -338,6 +339,7 @@ pub fn impl_visitable_group(options: Options, mut item: ItemTrait) -> Result<Tok
             #[repr(transparent)]
             pub struct #wrapper_name<V: ?Sized>(V);
             impl<V: ?Sized> #wrapper_name<V> {
+                #[inline]
                 fn wrap(x: &mut V) -> &mut Self {
                     // SAFETY: `repr(transparent)`
                     unsafe { std::mem::transmute(x) }
@@ -387,6 +389,7 @@ pub fn impl_visitable_group(options: Options, mut item: ItemTrait) -> Result<Tok
         }
         impls.push(parse_quote!(
             impl<'s, V: #vis_trait_name, T: #trait_name> #visit_trait<'s, T> for #wrapper_name<V> {
+                #[inline]
                 fn visit(&mut self, x: &'s #mutability T #y_param) -> #control_flow<Self::Break> {
                     #body
                 }
@@ -437,6 +440,7 @@ pub fn impl_visitable_group(options: Options, mut item: ItemTrait) -> Result<Tok
             quote! {
                 /// Visit the contents of `x`. This calls `self.visit()` on each field of `T`. This
                 /// is available for any type whose contents are all `#trait_name`.
+                #[inline]
                 fn visit_inner<T>(&mut self, x: & #mutability T #y_param_t) #return_type
                 where
                     T: #trait_name,
@@ -464,6 +468,7 @@ pub fn impl_visitable_group(options: Options, mut item: ItemTrait) -> Result<Tok
         let visit_method = quote! {
             /// Visit a visitable type. This calls the appropriate method of this trait on `x`
             /// (`visit_$ty` if it exists, `visit_inner` if not).
+            #[inline]
             fn visit<'a, T: #trait_name>(&'a mut self, x: & #mutability T #y_param_vis)
                 #return_type
             {
@@ -477,6 +482,7 @@ pub fn impl_visitable_group(options: Options, mut item: ItemTrait) -> Result<Tok
         };
         let visit_by_val_method = quote! {
             /// Convenience alias for method chaining.
+            #[inline]
             fn visit_by_val<T: #trait_name>(mut self, x: & #mutability T #y_param_vis)
                 #return_type_val
             {
@@ -486,6 +492,7 @@ pub fn impl_visitable_group(options: Options, mut item: ItemTrait) -> Result<Tok
         let visit_by_val_infallible = if *faillible && !*is_two {
             Some(quote!(
                 /// Convenience when the visitor does not return early.
+                #[inline]
                 fn visit_by_val_infallible<T: #trait_name>(self, x: & #mutability T) -> Self
                 where
                     Self: #the_visitor_trait<Break=::std::convert::Infallible> + Sized,
@@ -536,6 +543,7 @@ pub fn impl_visitable_group(options: Options, mut item: ItemTrait) -> Result<Tok
                 /// it if the contents of `x` should not be visited.
                 ///
                 /// The default implementation calls `enter_$ty` then `visit_inner` then `exit_$ty`.
+                #[inline]
                 fn #visit_method_name #impl_generics(&mut self, x: &#mutability #ty #y_param_ty)
                     #return_type
                 #where_clause
@@ -547,11 +555,13 @@ pub fn impl_visitable_group(options: Options, mut item: ItemTrait) -> Result<Tok
             if !skip {
                 visitor_trait.items.push(parse_quote!(
                     /// Called when starting to visit a `$ty` (unless `visit_$ty` is overriden).
+                    #[inline]
                     fn #enter_method #impl_generics(&mut self, x: &#mutability #ty #y_param_ty)
                         #where_clause {}
                 ));
                 visitor_trait.items.push(parse_quote!(
                     /// Called when finished visiting a `$ty` (unless `visit_$ty` is overriden).
+                    #[inline]
                     fn #exit_method #impl_generics(&mut self, x: &#mutability #ty #y_param_ty)
                         #where_clause {}
                 ));

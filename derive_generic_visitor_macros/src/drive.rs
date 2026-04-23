@@ -96,6 +96,7 @@ pub fn impl_drive(input: DeriveInput, mutable: bool) -> Result<TokenStream> {
     Ok(quote! {
         impl #impl_generics #drive_trait<#lifetime_param, #visitor_param> for #impl_subject
         #where_clause {
+            #[inline]
             #[allow(non_shorthand_field_patterns, unused_variables)]
             fn #drive_inner_method(&#lifetime_param #mut_modifier self, visitor: &mut #visitor_param)
                     -> #control_flow<#visitor_param::Break> {
@@ -236,6 +237,7 @@ pub fn impl_drive_two(input: DeriveInput) -> Result<TokenStream> {
     Ok(quote! {
         impl #impl_generics #drive_two_trait<#lifetime_param, #visitor_param> for #impl_subject
         #where_clause {
+            #[inline]
             #[allow(non_shorthand_field_patterns, unused_variables)]
             fn drive_two_inner(&#lifetime_param self, other: &#lifetime_param Self, visitor: &mut #visitor_param)
                     -> #control_flow<#visitor_param::Break> {

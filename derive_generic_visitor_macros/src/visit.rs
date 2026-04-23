@@ -206,6 +206,7 @@ pub fn impl_visit(input: DeriveInput, mutable: bool) -> Result<TokenStream> {
                     for #impl_subject
                     #where_clause
                 {
+                    #[inline]
                     fn visit(&mut self, x: &#lifetime_param #mut_modifier #ty)
                         -> #control_flow<Self::Break> {
                         #body
@@ -288,6 +289,7 @@ pub fn impl_visit_two(input: DeriveInput) -> Result<TokenStream> {
                     for #impl_subject
                     #where_clause
                 {
+                    #[inline]
                     fn visit(&mut self, x: &#lifetime_param #ty, y: &#lifetime_param #ty)
                         -> #control_flow<Self::Break> {
                         #body
