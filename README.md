@@ -315,9 +315,11 @@ they don't match. This can be useful to define custom comparison functions.
 The structure matches what we've seen so far: `DriveTwo` represents a type that can be
 lockstep-visited, and `VisitTwo` represents the corresponding visitors. Both can be derived,
 and support the same option as their normal counterparts. There is no mutable version of this
-visitor, under the assumption that it's not as useful.
+visitor, under the assumption that it's not as useful. `DriveTwo` on a simple value like `u32`
+just compares for equality.
 
 Lockstep visitors are supported by the `visitable_group` macro by writing `&two TraitName`
-where you would write `&TraitName`/`&mut TraitName`.
+where you would write `&TraitName`/`&mut TraitName`. Being recursive, a visitor with no
+overrides or skips is just an equality comparison.
 
 <!-- cargo-rdme end -->
