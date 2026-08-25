@@ -298,6 +298,8 @@ The options available for the `visitable_group` macro are:
   - the optional `bounds(...)` adds super trait bounds to the generated `TraitName` trait.
 - `drive(Ty)` and `skip(Ty)`: behave the same as their counterparts in the `Visit` and `VisitMut`
     derives described above.
+- `skip_but_eq(Ty)`: behaves like `skip(Ty)` for normal visitors, and compares the two values
+    with [`PartialEq::eq`] and breaks if they differ for lockstep visitors.
 - `override(Ty)`: generates `enter_ty` and `exit_ty` methods that do nothing, and a `visit_ty`
     method that calls `enter_ty`, recurses with `self.visit_inner()?`, then calls `exit_ty`.
 - `override_skip(Ty)`: similar to `override(Ty)`, but the default implementation does nothing, and no `enter_Ty` or `exit_Ty` methods are generated.
@@ -319,7 +321,8 @@ visitor, under the assumption that it's not as useful. `DriveTwo` on a simple va
 just compares for equality.
 
 Lockstep visitors are supported by the `visitable_group` macro by writing `&two TraitName`
-where you would write `&TraitName`/`&mut TraitName`. Being recursive, a visitor with no
-overrides or skips is just an equality comparison.
+where you would write `&TraitName`/`&mut TraitName`. Using `skip_but_eq(Ty)` instead of `skip`
+and avoiding `drive(skip)` turns the lockstep visitor into a `PartialEq::eq` substitute, that
+can be overriden to make "equality modulo" comparisons.
 
 <!-- cargo-rdme end -->

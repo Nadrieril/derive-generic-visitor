@@ -6,6 +6,7 @@ use crate::{GenericTy, Names};
 
 enum TyVisitKind {
     Skip,
+    SkipButEq,
     Drive,
     Override { skip: bool, name: Ident },
 }
@@ -43,6 +44,7 @@ mod parse {
         syn::custom_keyword!(visitor);
         syn::custom_keyword!(drive);
         syn::custom_keyword!(skip);
+        syn::custom_keyword!(skip_but_eq);
         syn::custom_keyword!(infallible);
         syn::custom_keyword!(override_skip);
         syn::custom_keyword!(bounds);
@@ -82,6 +84,7 @@ mod parse {
     #[allow(unused)]
     enum VisitableTypeKind {
         Skip(kw::skip),
+        SkipButEq(kw::skip_but_eq),
         Drive(kw::drive),
         Override(Token![override]),
         OverrideSkip(kw::override_skip),
@@ -137,6 +140,12 @@ mod parse {
             } else if lookahead.peek(kw::drive) {
                 MacroArg::SetVisitableTypes {
                     kind: VisitableTypeKind::Drive(input.parse()?),
+                    paren: parenthesized!(content in input),
+                    tys: Punctuated::parse_terminated(&content)?,
+                }
+            } else if lookahead.peek(kw::skip_but_eq) {
+                MacroArg::SetVisitableTypes {
+                    kind: VisitableTypeKind::SkipButEq(input.parse()?),
                     paren: parenthesized!(content in input),
                     tys: Punctuated::parse_terminated(&content)?,
                 }
@@ -223,6 +232,7 @@ mod parse {
                         for ty in tys {
                             let kind = match kind {
                                 Skip(_) => TyVisitKind::Skip,
+                                SkipButEq(_) => TyVisitKind::SkipButEq,
                                 Drive(_) => TyVisitKind::Drive,
                                 Override(_) => TyVisitKind::Override {
                                     skip: false,
@@ -287,8 +297,17 @@ pub fn impl_visitable_group(options: Options, mut item: ItemTrait) -> Result<Tok
         .tys
         .iter()
         .map(|(ty, kind)| {
-            let (impl_generics, _, where_clause) = ty.generics.split_for_impl();
+            let mut generics = ty.generics.clone();
             let ty = &ty.ty;
+            if matches!(kind, TyVisitKind::SkipButEq)
+                && visitor_traits.iter().any(|(v, _)| v.is_two)
+            {
+                generics
+                    .make_where_clause()
+                    .predicates
+                    .push(parse_quote!(#ty: ::std::cmp::PartialEq));
+            }
+            let (impl_generics, _, where_clause) = generics.split_for_impl();
             let mut timpl: ItemImpl = parse_quote! {
                 impl #impl_generics #trait_name for #ty #where_clause {}
             };
@@ -305,8 +324,17 @@ pub fn impl_visitable_group(options: Options, mut item: ItemTrait) -> Result<Tok
                 let other_arg = is_two.then(|| quote!(, other));
                 let return_type = faillible.then_some(quote!(-> #control_flow<V::Break>));
                 let body = match kind {
-                    TyVisitKind::Skip if *faillible => quote!( #control_flow::Continue(()) ),
-                    TyVisitKind::Skip => quote!(),
+                    TyVisitKind::SkipButEq if *is_two => quote! {
+                        if ::std::cmp::PartialEq::eq(self, other) {
+                            #control_flow::Continue(())
+                        } else {
+                            #control_flow::Break(::std::default::Default::default())
+                        }
+                    },
+                    TyVisitKind::Skip | TyVisitKind::SkipButEq if *faillible => {
+                        quote!( #control_flow::Continue(()) )
+                    }
+                    TyVisitKind::Skip | TyVisitKind::SkipButEq => quote!(),
                     TyVisitKind::Drive => quote!(v.visit_inner(self #other_arg)),
                     TyVisitKind::Override { name, .. } => {
                         let method = Ident::new(&format!("visit_{name}"), Span::call_site());

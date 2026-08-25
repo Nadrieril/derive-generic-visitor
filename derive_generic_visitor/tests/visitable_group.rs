@@ -169,6 +169,57 @@ fn visitable_group_two() {
     assert!(result.is_break());
 }
 
+/// Make sure the `&two` visitors work as a `PartialEq`.
+#[test]
+fn visitable_group_skip_but_eq() {
+    #[derive(Drive, DriveTwo)]
+    enum Expr {
+        Literal(usize),
+        Add {
+            lhs: Box<Expr>,
+            rhs: Box<Expr>,
+            wrap: bool,
+        },
+    }
+
+    #[visitable_group(
+        visitor(drive_expr_two(&two ExprTwoVisitor)),
+        skip(bool),
+        skip_but_eq(usize),
+        drive(for<T: ExprVisitable> Box<T>),
+        override(Expr),
+    )]
+    trait ExprVisitable {}
+
+    struct EqVisitor;
+    impl Visitor for EqVisitor {
+        type Break = ();
+    }
+    impl ExprTwoVisitor for EqVisitor {}
+    let is_eq = |x, y| EqVisitor.visit_by_val(x, y).is_continue();
+
+    let a = Expr::Add {
+        lhs: Box::new(Expr::Literal(1)),
+        rhs: Box::new(Expr::Literal(2)),
+        wrap: true,
+    };
+    assert!(is_eq(&a, &a));
+    let b = Expr::Add {
+        lhs: Box::new(Expr::Literal(1)),
+        rhs: Box::new(Expr::Literal(2)),
+        wrap: false,
+    };
+    // The `bool` is skipped.
+    assert!(is_eq(&a, &b));
+    let c = Expr::Add {
+        lhs: Box::new(Expr::Literal(10)),
+        rhs: Box::new(Expr::Literal(20)),
+        wrap: true,
+    };
+    // The `usize` is compared.
+    assert!(!is_eq(&a, &c));
+}
+
 /// Test `&two` visitor with `override_skip`.
 #[test]
 fn visitable_group_two_override_skip() {
