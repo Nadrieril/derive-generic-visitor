@@ -197,6 +197,7 @@ macro_rules! iter_impl {
 iter_impl!(<T> Vec<T>, iter(T), iter_mut(T));
 iter_impl!(<T> Option<T>, iter(T), iter_mut(T));
 iter_impl!(<T, const N: usize> [T; N], iter(T), iter_mut(T));
+iter_impl!(<T> [T], iter(T), iter_mut(T));
 
 // Make an impl for a type without contents to visit.
 macro_rules! leaf_impl {
